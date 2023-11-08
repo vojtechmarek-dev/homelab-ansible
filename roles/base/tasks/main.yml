@@ -1,0 +1,61 @@
+---
+# Install required packages on the host
+
+- name: "Disable all apt recommendations and suggestions"
+  copy:
+    src: "99local"
+    dest: "/etc/apt/apt.conf.d/99local"
+    owner: root
+    group: root
+    mode: 0644
+
+- name: "Uninstall rsyslog"
+  apt: {name: "rsyslog", state: absent, purge: yes, autoremove: yes}
+  when: remove_rsyslog|d(false)
+
+- name: "Remove unneeded Ubuntu packages"
+  apt:
+    name:
+      - "accountsservice"
+      - "byobu"
+      - "fwupd"
+      - "libfwupd2"
+      - "haveged"
+      - "lvm2"
+      - "mdadm"
+      - "multipath-tools"
+      - "packagekit"
+      - "plymouth"
+      - "snapd"
+      - "ufw"
+    state: absent
+    purge: yes
+    autoremove: yes
+  when: ansible_facts['distribution'] == "Ubuntu"
+
+- name: "Upgrade the system"
+  apt:
+    update_cache: yes
+    upgrade: dist
+
+- name: Install useful tools and programs
+  become: true
+  ansible.builtin.package:
+    name:
+      - curl
+      - nano
+      - sudo
+      - htop
+      - atop
+      - screen
+      - net-tools
+      - sysstat
+      - iotop
+      - python3-pip
+    state: present
+    update_cache: true
+
+- name: "Install man pages"
+  apt:
+    name: ["man-db", "manpages"]
+    state: present
