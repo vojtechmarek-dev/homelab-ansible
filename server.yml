@@ -1,6 +1,5 @@
 ---
 - hosts: my_servers
-  remote_user: {{ ansible_user }}
   roles:
     - role: base
       tags: "base"
