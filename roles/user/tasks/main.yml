@@ -1,0 +1,19 @@
+- name: Create user xmarek
+  user:
+    name: "{{ secrets.user.name }}"
+    password: "{{ secrets.user.password | string | password_hash('sha512') }}"
+    shell: /bin/bash
+    createhome: yes
+
+- name: Add xmarek to sudoers group
+  user:
+    name: "{{ secrets.user.name }}"
+    groups: sudo
+    append: yes
+
+- name: Create authorized_key fox xmarek user
+  ansible.posix.authorized_key:
+    user: "{{ secrets.user.name }}"
+    state: present
+    key: "{{ secrets.user.authorized_key }}"
+    exclusive: true

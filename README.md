@@ -36,9 +36,18 @@ For more detailed installation instructions see [installation guide](https://doc
 echo "export PATH=\"`python3 -m site --user-base`/bin:\$PATH\"" >> ~/.bash_profile
 ```
 
-# Playbook
-Since I will only use this for one purpose (setting up server) I will have a one playbook that will run all roles. To edit roles see `server.yml` playbook. 
+# Playbooks
+There are two two main playbooks:
+- `server.yml` - main playbook thats configures server - uses most roles @see server_roles Todo
+- `user.yml` - user access playbook that creates my user and adds to sudoers group
+    
+    :warning: For obvious security risks - this playbook's tasks has all sensitive data (passwords, authorized keys) stored elsewhere (i.e. not in this repository) it references var secrets, playbook should be run as follows:
+    
+    ```
+    ansible-playbook -i inventory.ini -i ../ansible-secrets/secrets.yml user.yml --ask-vault-pass
+    ``` 
 
-The playbook currently includes the following roles:
+# Roles
+Playbooks currently includes the following roles:
 
 - base: represents basic configuration of Linux Debian server
