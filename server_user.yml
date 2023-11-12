@@ -1,0 +1,5 @@
+---
+- name: Create my user with ssh access_key and disable root access
+- hosts: my_servers
+  roles:
+    - role: docker

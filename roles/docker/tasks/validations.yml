@@ -1,0 +1,22 @@
+---
+- name: Run validations
+  block:
+    - name: Check host operating system
+      set_fact:
+        validations_failed: "{{ validations_failed|default([]) + [ 'Unsupported operating system' ] }}"
+      when:
+        - not(ansible_facts['distribution'] == "Debian" and ansible_facts['distribution_major_version'] in ['11','12'])
+
+    - name: Validation failures
+      debug:
+        msg: "{{ validations_failed|default('nothing') }}"
+      when:
+        - validations_failed is defined
+        - validations_failed
+      failed_when: true
+  rescue:
+    - name: Print when errors
+      debug:
+        msg: "Play aborted, see errors above"
+      changed_when: true
+    - meta: end_play

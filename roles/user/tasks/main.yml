@@ -1,6 +1,7 @@
 - name: Create user xmarek
   user:
     name: "{{ secrets.user.name }}"
+    # need to use string itermediate pipe because of password_hash by itself does not work with vault password get from variables
     password: "{{ secrets.user.password | string | password_hash('sha512') }}"
     shell: /bin/bash
     createhome: yes

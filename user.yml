@@ -1,4 +1,0 @@
-- hosts: my_servers
-  roles:
-    - role: user
-      tags: "user"
