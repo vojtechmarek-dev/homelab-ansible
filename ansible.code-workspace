@@ -1,0 +1,13 @@
+{
+	"folders": [
+		{
+			"path": "."
+		},
+		{
+			"path": "../ansible-secrets"
+		}
+	],
+	"settings": {
+		"ansible.python.interpreterPath": "c:\\Users\\Vojta\\AppData\\Local\\Programs\\Python\\Python311\\python.exe"
+	}
+}

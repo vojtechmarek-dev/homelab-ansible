@@ -1,7 +1,6 @@
 ---
 - name: Install and configure Docker
-  hosts: my_servers
-  become: true
+  hosts: all
   roles:
     - docker
 

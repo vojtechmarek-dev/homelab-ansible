@@ -1,5 +1,5 @@
 ---
 - name: Basic configuration and common packages to all servers
-- hosts: my_servers
+  hosts: all
   roles:
     - role: base
