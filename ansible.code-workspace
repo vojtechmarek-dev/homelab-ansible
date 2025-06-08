@@ -8,6 +8,6 @@
 		}
 	],
 	"settings": {
-		"ansible.python.interpreterPath": "c:\\Users\\Vojta\\AppData\\Local\\Programs\\Python\\Python311\\python.exe"
+		"ansible.python.interpreterPath": "c:\\Program Files\\Python313\\python.exe"
 	}
 }

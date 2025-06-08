@@ -1,0 +1,66 @@
+- name: Deploy Tailscale Subnet Router
+  hosts: homelab
+  become: yes
+  vars:
+    # --- IMPORTANT: CHANGE THIS TO MATCH YOUR HOME NETWORK ---
+    home_lan_subnet: "192.168.0.0/24"
+    project_dir: "/opt/tailscale"
+
+  tasks:
+    - name: Configure Host for IP Forwarding
+      ansible.posix.sysctl:
+        name: "{{ item.name }}"
+        value: "{{ item.value }}"
+        sysctl_file: /etc/sysctl.conf
+        reload: yes
+      loop:
+        - { name: 'net.ipv4.ip_forward', value: '1' }
+        - { name: 'net.ipv6.conf.all.forwarding', value: '1' }
+      notify: Restart Tailscale container
+
+    - name: Create Docker project directory
+      ansible.builtin.file:
+        path: "{{ project_dir }}"
+        state: directory
+        mode: '0755'
+
+    - name: Copy Docker Compose template
+      ansible.builtin.template:
+        src: templates/tailscale/docker-compose.yml.j2
+        dest: "{{ project_dir }}/docker-compose.yml"
+        mode: '0644'
+      notify: Restart Tailscale container
+
+    - name: Deploy Tailscale with Docker Compose
+      community.docker.docker_compose_v2:
+        project_src: "{{ project_dir }}"
+        state: present
+        pull: always
+      register: compose_result
+
+    - name: Check Tailscale authentication status
+      ansible.builtin.shell: "docker exec tailscaled tailscale status || true"
+      register: tailscale_status
+      changed_when: false
+
+    - name: Display Final Instructions
+      ansible.builtin.debug:
+        msg:
+          - "------------------------------------------------------------------"
+          - "PLAYBOOK COMPLETE"
+          - ""
+          - "IF TAILSCALE IS NOT YET AUTHENTICATED:"
+          - "SSH into your Raspberry Pi (ssh pi@{{ ansible_host }}) and run the following command to log in:"
+          - ""
+          - "  sudo docker exec -it tailscaled tailscale up"
+          - ""
+          - "Then, go to the Tailscale Admin Console and approve the advertised subnet route ({{ home_lan_subnet }})."
+          - "------------------------------------------------------------------"
+      when: "'Logged out' in tailscale_status.stdout"
+
+  handlers:
+    - name: Restart Tailscale container
+      community.docker.docker_compose_v2:
+        project_src: "{{ project_dir }}"
+        state: present
+        restarted: yes

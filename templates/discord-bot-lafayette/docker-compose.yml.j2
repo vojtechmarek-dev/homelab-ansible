@@ -1,0 +1,17 @@
+version: '3.8'
+
+services:
+  lafayette_bot:
+    image: ghcr.io/vojtechmarek-dev/discord-bot-lafayette:release
+    container_name: lafayette_bot
+    restart: unless-stopped
+    environment:
+      # Each variable is explicitly defined and mapped from the vault.
+      # quote is used to ensure proper handling of special characters.
+      - DISCORD_TOKEN={{ secrets.discord_bot_lafayette.DISCORD_TOKEN | quote }}
+      - CLIENT_ID={{ secrets.discord_bot_lafayette.CLIENT_ID | quote }}
+      - GUILD_ID={{ secrets.discord_bot_lafayette.GUILD_ID | quote }}
+      - DP_FFMPEG_PATH=/usr/bin/ffmpeg
+    volumes:
+      - ./bot_data:/usr/src/app/data  # Mount host's ./bot_data to container's /usr/src/app/data
+    # network_mode: "host" # Generally not needed unless specific requirements

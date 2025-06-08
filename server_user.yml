@@ -1,5 +1,5 @@
 ---
 - name: Create my user with ssh access_key and disable root access
-  hosts: all
+  hosts: homelab
   roles:
     - role: user

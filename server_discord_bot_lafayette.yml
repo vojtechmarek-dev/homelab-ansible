@@ -1,0 +1,41 @@
+---
+- name: Deploy Lafayette Discord Bot
+  hosts: homelab
+  become: true
+  vars:
+    project_name: discord-bot-lafayette
+    project_dir: "/opt/{{ project_name }}"
+    compose_file: "{{ project_dir }}/docker-compose.yml"
+    env_file: "{{ project_dir }}/.env"
+
+  tasks:
+    - name: Login to GitHub Container Registry
+      docker_login:
+        registry: ghcr.io
+        username: "{{ secrets.github.ghcr_username }}"
+        password: "{{ secrets.github.ghcr_token }}"
+        reauthorize: yes
+
+    - name: Create project directory
+      file:
+        path: "{{ project_dir }}"
+        state: directory
+        mode: '0755'
+
+    - name: Generate docker-compose.yml from template
+      ansible.builtin.template:
+        src: templates/discord-bot-lafayette/docker-compose.yml.j2      # Source is your explicit template
+        dest: "{{ project_dir }}/docker-compose.yml" # Destination is the final compose file
+        mode: '0644'
+
+    - name: Pull latest image
+      docker_image:
+        name: ghcr.io/vojtechmarek-dev/discord-bot-lafayette:release
+        source: pull
+        force_source: yes
+
+    - name: Start Lafayette Bot with Docker Compose V2
+      community.docker.docker_compose_v2:
+        project_src: "{{ project_dir }}"
+        state: present # Ensures services are (re)created and started
+      register: compose_result
