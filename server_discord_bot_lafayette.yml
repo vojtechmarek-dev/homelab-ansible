@@ -5,8 +5,12 @@
   vars:
     project_name: discord-bot-lafayette
     project_dir: "/opt/{{ project_name }}"
+    app_data_dir_on_host: "{{ project_dir }}/bot_data"
     compose_file: "{{ project_dir }}/docker-compose.yml"
-    env_file: "{{ project_dir }}/.env"
+    #env_file: "{{ project_dir }}/.env"
+    # node.js uid and gid
+    container_user_uid: "1001"
+    container_user_gid: "1001"
 
   tasks:
     - name: Login to GitHub Container Registry
@@ -17,10 +21,18 @@
         reauthorize: yes
 
     - name: Create project directory
-      file:
+      ansible.builtin.file:
         path: "{{ project_dir }}"
         state: directory
-        mode: '0755'
+        mode: '0755'  # Owner can rwx, group and others can rx
+
+    - name: Create persistent data directory for the bot on the host
+      ansible.builtin.file:
+        path: "{{ app_data_dir_on_host }}"
+        state: directory
+        owner: "{{ container_user_uid }}"  # Set owner to container's UID
+        group: "{{ container_user_gid }}"  # Set group to container's GID
+        mode: '0775'   # Owner (1001) and Group (1001) can rwx, others can rx
 
     - name: Generate docker-compose.yml from template
       ansible.builtin.template:
