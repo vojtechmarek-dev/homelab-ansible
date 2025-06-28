@@ -1,0 +1,53 @@
+---
+- name: Deploy Stirling PDF using Docker Compose
+  hosts: homelab-thinkcentre
+  become: yes # Needed for managing directories and Docker Compose
+
+  vars:
+    # --- All our configuration is defined here in one place ---
+    app_name: stirling-pdf
+    app_port: "8080"
+    # This is the location on the SERVER where we will store everything
+    project_path: "/srv/{{ app_name }}"
+    app_data_path: "{{ project_path }}/data"
+
+  tasks:
+    - name: Ensure the project directory for Docker Compose exists
+      ansible.builtin.file:
+        path: "{{ project_path }}"
+        state: directory
+        mode: '0755'
+
+    - name: Ensure the data subdirectories exist
+      ansible.builtin.file:
+        path: "{{ app_data_path }}/{{ item }}"
+        state: directory
+        mode: '0755'
+      loop:
+        - trainingData
+        - extraConfigs
+        - customFiles
+        - logs
+        - pipeline
+
+    - name: Copy the Docker Compose file to the server
+      ansible.builtin.template:
+        src: templates/stirling-pdf/docker-compose.yml.j2
+        dest: "{{ project_path }}/docker-compose.yml"     # Destination on the server
+        mode: '0644'
+      # We will notify a handler to restart the service if this file changes
+      notify: Restart stirling-pdf service
+
+    - name: Ensure the Docker Compose service is running
+      community.docker.docker_compose_v2:
+        project_src: "{{ project_path }}" # Tell compose where to find the yml file
+        state: present # 'present' ensures it's running, 'absent' would remove it
+
+  # --- HANDLERS ---
+  # Handlers only run if a task "notifies" them, ensuring restarts only happen when needed.
+  handlers:
+    - name: Restart stirling-pdf service
+      listen: "Restart stirling-pdf service"
+      community.docker.docker_compose_v2:
+        project_src: "{{ project_path }}"
+        state: present

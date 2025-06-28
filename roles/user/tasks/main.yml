@@ -1,4 +1,4 @@
-- name: Create user xmarek
+- name: Create user
   user:
     name: "{{ secrets.user.name }}"
     # need to use string itermediate pipe because of password_hash by itself does not work with vault password get from variables
@@ -6,13 +6,13 @@
     shell: /bin/bash
     createhome: yes
 
-- name: Add xmarek to sudoers group
+- name: Add user to sudoers group
   user:
     name: "{{ secrets.user.name }}"
     groups: sudo
     append: yes
 
-- name: Create authorized_key fox xmarek user
+- name: Create authorized_key for user
   ansible.posix.authorized_key:
     user: "{{ secrets.user.name }}"
     state: present

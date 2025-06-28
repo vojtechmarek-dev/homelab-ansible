@@ -1,0 +1,40 @@
+---
+- name: Deploy AdGuard Home
+  hosts: homelab-thinkcentre
+  become: yes
+
+  vars:
+    app_name: adguard-home
+    project_path: "/srv/{{ app_name }}"
+    app_data_path: "{{ project_path }}/data"
+
+  tasks:
+    - name: Ensure AdGuard Home project and data directories exist
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        mode: '0755'
+      loop:
+        - "{{ project_path }}"
+        - "{{ app_data_path }}"
+        - "{{ app_data_path }}/work"
+        - "{{ app_data_path }}/conf"
+
+    - name: Copy the Docker Compose template to the server
+      ansible.builtin.template:
+        src: templates/adguard-home/docker-compose.yml.j2
+        dest: "{{ project_path }}/docker-compose.yml"
+        mode: '0644'
+      notify: Restart AdGuard Home container
+
+    - name: Ensure the AdGuard Home service is running
+      community.docker.docker_compose_v2:
+        project_src: "{{ project_path }}"
+        state: present
+
+  handlers:
+    - name: Restart AdGuard Home container
+      listen: "Restart AdGuard Home container"
+      community.docker.docker_compose_v2:
+        project_src: "{{ project_path }}"
+        state: present

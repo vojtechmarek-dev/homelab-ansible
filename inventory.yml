@@ -1,4 +1,6 @@
 all:
   hosts:
-    homelab:
+    homelab-pi:
       ansible_host: 192.168.0.104
+    homelab-thinkcentre:
+      ansible_host: 192.168.0.146

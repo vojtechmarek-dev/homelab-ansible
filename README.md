@@ -90,6 +90,15 @@ ansible-playbook -i inventory.yml -i ../ansible-secrets/secrets.yml server_user.
   
 ### Playbook Execution Order
 
+## Bootstraping the server
+
+If your ssh user is not sudoer (or you cannot ssh as root), and you have no sudo user to connect as - ssh into server and add your user to sudoers manually.
+Before adding ssh key you need to connect to ssh with password add `-k` to your playbook call
+
+```bash 
+usermod -aG sudo username
+```
+
 1. **Run `server_basic_config.yml` as root** with SSH access.
 2. **Run `server_user.yml` as root**.
 3. Verify that the user created in the previous playbook has sudo privileges.

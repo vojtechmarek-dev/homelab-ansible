@@ -1,0 +1,52 @@
+---
+- name: Deploy Caddy as a Private Reverse Proxy
+  hosts: homelab-thinkcentre
+  become: yes
+
+  vars:
+    # Path on the server where the Caddy project will live
+    project_path: "/srv/caddy"
+    # Path ON THE HOST for our Caddyfile.
+    caddyfile_on_host: "{{ project_path }}/Caddyfile"
+
+  tasks:
+    - name: Ensure the Caddy project directory exists
+      ansible.builtin.file:
+        path: "{{ project_path }}"
+        state: directory
+        mode: '0755'
+
+    - name: Copy the Caddyfile template to the server
+      ansible.builtin.template:
+        src: templates/caddy/Caddyfile.private.j2
+        dest: "{{ caddyfile_on_host }}"
+        mode: '0644'
+      notify: Reload Caddy
+
+    - name: Copy the Docker Compose template to the server
+      ansible.builtin.template:
+        # We pass the host path of the Caddyfile into the template
+        src: templates/caddy/docker-compose.yml.j2
+        dest: "{{ project_path }}/docker-compose.yml"
+        mode: '0644'
+      notify: Restart Caddy Service # A change to the compose file needs a full restart
+
+    - name: Ensure the Caddy service is running
+      community.docker.docker_compose_v2:
+        project_src: "{{ project_path }}"
+        state: present
+
+  handlers:
+    # Handler for when the Caddyfile itself changes (no container restart needed)
+    - name: Reload Caddy
+      listen: "Reload Caddy"
+      community.docker.docker_container_exec:
+        container: caddy
+        command: caddy reload --config /etc/caddy/Caddyfile
+
+    # Handler for when the docker-compose.yml file changes (container must be recreated)
+    - name: Restart Caddy Service
+      listen: "Restart Caddy Service"
+      community.docker.docker_compose_v2:
+        project_src: "{{ project_path }}"
+        state: present # Re-running with 'present' will apply the compose file changes

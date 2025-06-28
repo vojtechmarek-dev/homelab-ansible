@@ -1,0 +1,24 @@
+version: '3.8'
+
+services:
+  caddy:
+    image: caddy:latest
+    container_name: caddy
+    restart: unless-stopped
+    cap_add:
+      - NET_ADMIN
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp" # For HTTP/3
+    volumes:
+      # Mount our custom Caddyfile from a host path
+      - "{{ caddyfile_on_host }}:/etc/caddy/Caddyfile"
+      # Use Docker named volumes for persistent data, as recommended
+      - caddy_data:/data
+      - caddy_config:/config
+
+# Define the named volumes so Docker creates and manages them
+volumes:
+  caddy_data:
+  caddy_config:

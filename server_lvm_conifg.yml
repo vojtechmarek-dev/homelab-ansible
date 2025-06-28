@@ -1,0 +1,126 @@
+---
+- name: Configure LVM storage on the server
+  hosts: homelab-thinkcentre
+  become: yes # All these tasks require root privileges
+
+  # --- Variables to make the playbook easy to change ---
+  vars:
+    lvm_disk: /dev/sda
+    # Note: Your root install is on /dev/sda1, /dev/sda2, /dev/sda3. The new partition will be #4.
+    lvm_partition_num: 4
+    lvm_vg_name: data_vg # Name for our new Volume Group
+    logical_volumes:
+      - name: var
+        size: 20g
+        mount_point: /var
+      - name: home
+        size: 5g
+        mount_point: /home
+      - name: srv
+        size: 100%FREE # Use all remaining space for our main data LV
+        mount_point: /srv
+
+  # --- Let's start the tasks ---
+  tasks:
+    - name: 1. Install required LVM and partitioning tools
+      ansible.builtin.apt:
+        name: ['lvm2', 'gdisk', 'parted', 'rsync']
+        state: present
+        update_cache: yes
+        
+    - name: Allow 'sudo' group to have passwordless sudo
+      ansible.builtin.lineinfile:
+        path: /etc/sudoers
+        state: present
+        regexp: '^%sudo'
+        line: '%sudo ALL=(ALL) NOPASSWD: ALL'
+        validate: 'visudo -cf %s' # This validates the file before saving
+
+    - name: 2. Create a new partition to fill the remaining disk space
+      community.general.parted:
+        device: "{{ lvm_disk }}"
+        number: "{{ lvm_partition_num }}"
+        state: present
+        # Start at 41% to be safely past the ~48GB used by the OS
+        part_start: 41%
+        # Extend to the end of the disk
+        part_end: 100%
+        flags: [lvm]
+
+
+    - name: 3. Create a Volume Group (VG) on the new partition
+      community.general.lvg:
+        vg: "{{ lvm_vg_name }}"
+        pvs: "{{ lvm_disk }}{{ lvm_partition_num }}"
+        state: present
+
+    - name: 4a. Create LVs with a fixed size (var, home)
+      community.general.lvol:
+        vg: "{{ lvm_vg_name }}"
+        lv: "{{ item.name }}"
+        size: "{{ item.size }}"
+      loop:
+        - { name: 'var', size: '20g' }
+        - { name: 'home', size: '5g' }
+
+    - name: 4b. Create the 'srv' LV to use all remaining free space
+      community.general.lvol:
+        vg: "{{ lvm_vg_name }}"
+        lv: 'srv'
+        size: '100%FREE'
+      # This is the key: the 'when' clause is at the same level as the module name.
+      when: "'srv' not in ansible_lvm.lvs"
+
+    - name: 5. Create an ext4 filesystem on each new LV
+      community.general.filesystem:
+        fstype: ext4
+        dev: "/dev/{{ lvm_vg_name }}/{{ item.name }}"
+      loop: "{{ logical_volumes }}"
+
+    # --- Now we migrate data for /var and /home ---
+    # We will loop through only the volumes that need data migration
+
+    - name: 6. Mount the new LVs to a temporary location for data copy
+      ansible.posix.mount:
+        path: "/mnt/{{ item.name }}_new"
+        src: "/dev/{{ lvm_vg_name }}/{{ item.name }}"
+        fstype: ext4
+        state: mounted
+      loop: "{{ logical_volumes }}"
+      when: item.mount_point in ['/var', '/home']
+
+    - name: 7. Copy data from original directories to new LVs
+      become: yes # We still need to be root to read/write system files
+      ansible.builtin.copy:
+        src: "{{ item.mount_point }}/"  # The source directory on the remote machine
+        dest: "/mnt/{{ item.name }}_new" # The destination on the remote machine
+        remote_src: yes # CRITICAL: This tells 'copy' that src is on the remote server
+        # The copy module automatically preserves permissions when become is used
+      loop: "{{ logical_volumes }}"
+      when: item.mount_point in ['/var', '/home']
+
+    - name: 8. Unmount the temporary LVs before the final mount
+      ansible.posix.mount:
+        path: "/mnt/{{ item.name }}_new"
+        state: unmounted
+      loop: "{{ logical_volumes }}"
+      when: item.mount_point in ['/var', '/home']
+
+    - name: 9. Add the final mount points to /etc/fstab and mount them
+      ansible.posix.mount:
+        path: "{{ item.mount_point }}"
+        src: "/dev/{{ lvm_vg_name }}/{{ item.name }}"
+        fstype: ext4
+        state: mounted # 'mounted' state handles both mounting and adding to fstab
+      loop: "{{ logical_volumes }}"
+
+    - name: 10. Announce that a reboot is recommended
+      ansible.builtin.debug:
+        msg: "LVM setup is complete. A reboot is highly recommended to ensure the system boots correctly with the new /var and /home mounts."
+
+    - name: 11. Final cleanup of temporary mount directories
+      ansible.builtin.file:
+        path: "/mnt/{{ item.name }}_new"
+        state: absent # This ensures the directory itself is removed
+      loop: "{{ logical_volumes }}"
+      when: item.mount_point in ['/var', '/home']

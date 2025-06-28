@@ -1,5 +1,6 @@
 ---
 - name: Basic configuration and common packages to all servers
-  hosts: all
+  hosts: homelab-thinkcentre
+  become: true
   roles:
     - role: base

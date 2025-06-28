@@ -11,6 +11,7 @@ services:
       - DISCORD_TOKEN={{ secrets.discord_bot_lafayette.DISCORD_TOKEN | quote }}
       - CLIENT_ID={{ secrets.discord_bot_lafayette.CLIENT_ID | quote }}
       - GUILD_ID={{ secrets.discord_bot_lafayette.GUILD_ID | quote }}
+      - BOT_OWNER_ID={{ secrets.discord_bot_lafayette.BOT_OWNER_ID | quote }}
       - DP_FFMPEG_PATH=/usr/bin/ffmpeg
     volumes:
       - ./bot_data:/usr/src/app/data  # Mount host's ./bot_data to container's /usr/src/app/data

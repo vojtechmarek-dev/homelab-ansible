@@ -1,0 +1,17 @@
+version: '3.8'
+services:
+  {{ app_name }}:
+    image: docker.stirlingpdf.com/stirlingtools/stirling-pdf:latest
+    container_name: {{ app_name }}
+    ports:
+      - '{{ app_port }}:8080'
+    volumes:
+      - {{ app_data_path }}/trainingData:/usr/share/tessdata
+      - {{ app_data_path }}/extraConfigs:/configs
+      - {{ app_data_path }}/customFiles:/customFiles
+      - {{ app_data_path }}/logs:/logs
+      - {{ app_data_path }}/pipeline:/pipeline
+    environment:
+      - DOCKER_ENABLE_SECURITY=false
+      - LANGS=en_GB
+    restart: unless-stopped

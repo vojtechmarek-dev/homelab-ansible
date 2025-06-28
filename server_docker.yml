@@ -1,6 +1,7 @@
 ---
 - name: Install and configure Docker
-  hosts: homelab
+  hosts: homelab-thinkcentre
+  become: true
   roles:
     - docker
 

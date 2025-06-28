@@ -1,10 +1,11 @@
 - name: Deploy Tailscale Subnet Router
-  hosts: homelab
+  hosts: homelab-thinkcentre
   become: yes
   vars:
     # --- IMPORTANT: CHANGE THIS TO MATCH YOUR HOME NETWORK ---
     home_lan_subnet: "192.168.0.0/24"
-    project_dir: "/opt/tailscale"
+    project_dir: "/srv/tailscale"
+    state_dir: "/srv/tailscale/state"
 
   tasks:
     - name: Configure Host for IP Forwarding
@@ -50,7 +51,7 @@
           - "PLAYBOOK COMPLETE"
           - ""
           - "IF TAILSCALE IS NOT YET AUTHENTICATED:"
-          - "SSH into your Raspberry Pi (ssh pi@{{ ansible_host }}) and run the following command to log in:"
+          - "SSH into your server (ssh username@{{ ansible_host }}) and run the following command to log in:"
           - ""
           - "  sudo docker exec -it tailscaled tailscale up"
           - ""

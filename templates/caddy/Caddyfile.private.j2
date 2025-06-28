@@ -1,0 +1,18 @@
+# This is a private Caddyfile for internal services
+
+https://pdf.{{ domain }} {
+    # Use the Cloudflare DNS plugin to get a certificate
+    tls {
+        dns cloudflare {env.CLOUDFLARE_API_TOKEN}
+    }
+    reverse_proxy stirling-pdf:8080
+}
+
+# --- Future-proofing Section ---
+# When you add a new service, like Jellyfin:
+# 1. Add "jellyfin.internal" as a DNS rewrite in AdGuard Home.
+# 2. Add the block below to this file and re-run the Ansible playbook.
+#
+# http://jellyfin.homelab {
+#     reverse_proxy jellyfin-container-name:8096
+# }

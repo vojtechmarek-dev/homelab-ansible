@@ -1,0 +1,29 @@
+version: '3.8'
+services:
+  adguardhome:
+    image: adguard/adguardhome:latest
+    container_name: adguard-home
+    ports:
+      # Standard DNS
+      - "53:53/tcp"
+      - "53:53/udp"
+      # DHCP (Optional, usually handled by router)
+      # - "67:67/udp"
+      # - "68:68/tcp"
+      # - "68:68/udp"
+      # Web UI for setup and management
+      # - "80:80/tcp"   # Redirects to setup on port 3000 - used by caddy
+      - "3000:3000/tcp" # Main Web UI
+      # Encrypted DNS
+      # - "443:443/tcp" # DNS-over-HTTPS - used by caddy
+      # - "443:443/udp" # For HTTP/3 - used by caddy
+      - "853:853/tcp" # DNS-over-TLS
+      - "853:853/udp" # DNS-over-QUIC
+      - "5443:5443/tcp" # DNSCrypt
+      - "5443:5443/udp" # DNSCrypt
+      # Go pprof profiling (for debugging)
+      # - "6060:6060/tcp"
+    volumes:
+      - "{{ app_data_path }}/work:/opt/adguardhome/work"
+      - "{{ app_data_path }}/conf:/opt/adguardhome/conf"
+    restart: unless-stopped

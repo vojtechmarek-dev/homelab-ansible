@@ -1,6 +1,6 @@
 ---
 - name: Deploy Lafayette Discord Bot
-  hosts: homelab
+  hosts: homelab-pi
   become: true
   vars:
     project_name: discord-bot-lafayette

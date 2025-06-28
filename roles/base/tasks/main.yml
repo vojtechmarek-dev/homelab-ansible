@@ -38,6 +38,7 @@
   tags: ['cleanup']
 
 - name: "Upgrade the system"
+  become: true
   apt:
     update_cache: yes
     upgrade: dist
@@ -60,23 +61,6 @@
     state: present
     update_cache: true
   tags: ['packages']
-
-- name: Ensure prerequisite OS packages for Python Docker SDK are installed
-  ansible.builtin.apt: # Or ansible.builtin.package
-    name:
-      - python3-pip      # Still good to have pip for other non-system critical packages if needed later
-      - python3-docker   # This is the system package for Docker SDK
-      - python3-requests # This is the system package for requests
-      # - python3-yaml     # For PyYAML, often python3-yaml or python3-ruamel.yaml
-      # - python3-jsondiff # If available and needed
-    state: present
-    update_cache: yes # Run apt update before installing
-  when: ansible_os_family == "Debian" # Or more specific like ansible_distribution == "Ubuntu" and ansible_distribution_version >= "23.04"
-  # Add a retry for apt as well
-  retries: 3
-  delay: 10
-  register: apt_install_result
-  until: apt_install_result is success
 
 - name: "Install man pages"
   apt:
