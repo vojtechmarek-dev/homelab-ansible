@@ -1,0 +1,81 @@
+---
+- name: Deploy Nextcloud Stack
+  hosts: homelab-thinkcentre
+  become: yes
+
+  vars:
+    nextcloud_db_root_password: "{{ secrets.nextcloud_db_root_password }}"
+    nextcloud_db_password: "{{ secrets.nextcloud_db_password }}"
+
+    # --- Configuration ---
+    project_path: "/srv/nextcloud"
+    app_data_path: "{{ project_path }}/app"
+    db_data_path: "{{ project_path }}/db"
+    domain: vojtechmarek.dev
+
+  tasks:
+    - name: Ensure Nextcloud project, app, and db directories exist
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        mode: '0755'
+      loop:
+        - "{{ project_path }}"
+        - "{{ app_data_path }}"
+        - "{{ db_data_path }}"
+
+    - name: Set ownership for Nextcloud app data directory
+      ansible.builtin.file:
+        path: "{{ app_data_path }}"
+        state: directory
+        # The Nextcloud container runs as user 'www-data' (UID 33)
+        owner: "33"
+        group: "33"
+        recurse: yes
+
+    - name: Copy the Nextcloud Docker Compose template
+      ansible.builtin.template:
+        src: templates/nextcloud/docker-compose.yml.j2
+        dest: "{{ project_path }}/docker-compose.yml"
+        mode: '0644'
+      notify: Restart Nextcloud Service
+
+    - name: Ensure Nextcloud stack is running
+      community.docker.docker_compose_v2:
+        project_src: "{{ project_path }}"
+        state: present
+
+    - name: Wait for Nextcloud config file to be created
+      ansible.builtin.wait_for:
+        path: "{{ app_data_path }}/config/config.php"
+        timeout: 120 # Wait up to 2 minutes for it to appear after first install
+      # This task will only run if the file doesn't exist, preventing delays on subsequent runs.
+      # It gives the container time to initialize itself on the very first run.
+
+    - name: Configure Nextcloud overwrite protocol
+      community.docker.docker_container_exec:
+        container: nextcloud-app
+        command: php occ config:system:set overwriteprotocol --value="https"
+      vars:
+        ansible_docker_user: www-data
+
+    - name: Configure Nextcloud trusted domain
+      community.docker.docker_container_exec:
+        container: nextcloud-app
+        command: php occ config:system:set trusted_domains 1 --value="nextcloud.{{ domain }}"
+      vars:
+        ansible_docker_user: www-data
+
+    - name: Configure Nextcloud maintenance window
+      community.docker.docker_container_exec:
+        container: nextcloud-app
+        command: php occ config:system:set maintenance_window_start --type=integer --value=1
+      vars:
+        ansible_docker_user: www-data
+
+  handlers:
+    - name: Restart Nextcloud Service
+      listen: "Restart Nextcloud Service"
+      community.docker.docker_compose_v2:
+        project_src: "{{ project_path }}"
+        state: present

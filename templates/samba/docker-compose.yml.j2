@@ -1,0 +1,19 @@
+version: '3.8'
+
+services:
+  samba:
+    image: dperson/samba
+    container_name: samba
+    # We must use host networking for Samba to be easily discoverable on the LAN.
+    # This also means we don't need to map ports manually.
+    network_mode: host
+    volumes:
+      # Map the directory on your external drive to a path inside the container.
+      # The Samba service will share this internal path.
+      - "{{ samba_share_path }}:/share"
+    # We pass in the configuration as command-line arguments.
+    command: >-
+      -p
+      -u "{{ samba_user }};{{ samba_password }}"
+      -s "Public;/share;yes;no;no;{{ samba_user }};{{ samba_user }}"
+    restart: unless-stopped

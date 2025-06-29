@@ -2,6 +2,8 @@ version: '3.8'
 services:
   adguardhome:
     image: adguard/adguardhome:latest
+    networks:
+      - proxy
     container_name: adguard-home
     ports:
       # Standard DNS
@@ -27,3 +29,7 @@ services:
       - "{{ app_data_path }}/work:/opt/adguardhome/work"
       - "{{ app_data_path }}/conf:/opt/adguardhome/conf"
     restart: unless-stopped
+
+networks:
+  proxy:
+    external: true

@@ -1,0 +1,47 @@
+---
+- name: Deploy Samba File Share
+  hosts: homelab-thinkcentre
+  become: yes
+
+  vars:
+    samba_user: "{{ secrets.samba_user }}"
+    samba_password: "{{ secrets.samba_password }}"
+
+    # --- Configuration ---
+    # The project path on the server
+    project_path: "/srv/samba"
+    # The path on your external drive that will be shared
+    samba_base_path: "/mnt/samba_share"
+    samba_share_path: "{{ samba_base_path }}/public"
+
+  tasks:
+    - name: Ensure the Samba project and share directories exist
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        mode: '0775' # Make it group-writable
+        owner: root
+        group: users # A common group that users belong to
+      loop:
+        - "{{ project_path }}"
+        - "{{ samba_base_path }}"
+        - "{{ samba_share_path }}"
+
+    - name: Copy the Samba Docker Compose template to the server
+      ansible.builtin.template:
+        src: templates/samba/docker-compose.yml.j2
+        dest: "{{ project_path }}/docker-compose.yml"
+        mode: '0644'
+      notify: Restart Samba Service
+
+    - name: Ensure the Samba service is running
+      community.docker.docker_compose_v2:
+        project_src: "{{ project_path }}"
+        state: present
+
+  handlers:
+    - name: Restart Samba Service
+      listen: "Restart Samba Service"
+      community.docker.docker_compose_v2:
+        project_src: "{{ project_path }}"
+        state: present

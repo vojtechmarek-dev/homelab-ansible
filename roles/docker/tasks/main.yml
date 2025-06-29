@@ -39,8 +39,35 @@
   register: apt_install_result
   until: apt_install_result is success
 
+- name: Ensure Docker config directory exists
+  ansible.builtin.file:
+    path: /etc/docker
+    state: directory
+    mode: '0755'
+
+- name: Configure Docker to disable IPv6
+  ansible.builtin.copy:
+    dest: /etc/docker/daemon.json
+    content: |
+      {
+        "ipv6": false
+      }
+    mode: '0644'
+
 - name: Start Docker service
   ansible.builtin.service:
     name: docker
     enabled: true
     state: started
+
+- name: Create a shared Docker network
+  community.docker.docker_network:
+    name: proxy
+    state: present
+
+- name: Add manager user to the 'docker' group for sudo-less access
+  ansible.builtin.user:
+    name: "{{ secrets.user.name }}"
+    groups: docker
+    append: yes  # VERY IMPORTANT: This adds 'docker' without removing other groups like 'sudo'
+

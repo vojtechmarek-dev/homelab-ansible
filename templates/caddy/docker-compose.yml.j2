@@ -2,7 +2,9 @@ version: '3.8'
 
 services:
   caddy:
-    image: caddy:latest
+    image: caddy-custom:latest
+    networks:
+      - proxy
     container_name: caddy
     restart: unless-stopped
     cap_add:
@@ -17,8 +19,16 @@ services:
       # Use Docker named volumes for persistent data, as recommended
       - caddy_data:/data
       - caddy_config:/config
+    environment:
+      # Pass the API token directly as an environment variable
+      CLOUDFLARE_API_TOKEN: "{{ cloudflare_token_from_vault }}"
+
 
 # Define the named volumes so Docker creates and manages them
 volumes:
   caddy_data:
   caddy_config:
+
+networks:
+  proxy:
+    external: true

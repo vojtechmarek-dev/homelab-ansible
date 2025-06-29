@@ -3,6 +3,8 @@ services:
   {{ app_name }}:
     image: docker.stirlingpdf.com/stirlingtools/stirling-pdf:latest
     container_name: {{ app_name }}
+    networks:
+      - proxy
     ports:
       - '{{ app_port }}:8080'
     volumes:
@@ -15,3 +17,7 @@ services:
       - DOCKER_ENABLE_SECURITY=false
       - LANGS=en_GB
     restart: unless-stopped
+
+networks:
+  proxy:
+    external: true

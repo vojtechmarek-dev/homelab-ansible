@@ -8,6 +8,29 @@ https://pdf.{{ domain }} {
     reverse_proxy stirling-pdf:8080
 }
 
+https://nextcloud.{{ domain }} {
+    # This block is for service discovery for calendar/contacts clients
+    redir /.well-known/carddav /remote.php/dav/ permanent
+    redir /.well-known/caldav /remote.php/dav/ permanent
+
+    tls {
+        dns cloudflare {env.CLOUDFLARE_API_TOKEN}
+    }
+
+    # The reverse_proxy directive
+    reverse_proxy nextcloud-app:80
+}
+
+https://adguardhome.{{ domain }} {
+    tls {
+        dns cloudflare {env.CLOUDFLARE_API_TOKEN}
+    }
+
+    # The reverse_proxy directive
+    reverse_proxy adguard-home:3000
+
+}
+
 # --- Future-proofing Section ---
 # When you add a new service, like Jellyfin:
 # 1. Add "jellyfin.internal" as a DNS rewrite in AdGuard Home.

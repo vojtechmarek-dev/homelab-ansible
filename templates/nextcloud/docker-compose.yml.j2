@@ -1,0 +1,64 @@
+version: '3.8'
+
+services:
+  # The Database Service (MariaDB)
+  db:
+    image: mariadb:10.6
+    container_name: nextcloud-db
+    restart: unless-stopped
+    command: --transaction-isolation=READ-COMMITTED --binlog-format=ROW
+    volumes:
+      - "{{ db_data_path }}:/var/lib/mysql"
+    environment:
+      - MYSQL_ROOT_PASSWORD={{ nextcloud_db_root_password }}
+      - MYSQL_PASSWORD={{ nextcloud_db_password }}
+      - MYSQL_DATABASE=nextcloud
+      - MYSQL_USER=nextcloud
+    # This container does NOT need to be on the proxy network
+    # It will only talk to the other nextcloud containers
+    networks:
+      - nextcloud_internal
+
+  # The Caching Service (Redis)
+  redis:
+    image: redis:alpine
+    container_name: nextcloud-redis
+    restart: unless-stopped
+    networks:
+      - nextcloud_internal
+
+  # The Main Nextcloud Application
+  app:
+    image: nextcloud:latest
+    container_name: nextcloud-app
+    restart: unless-stopped
+    # We expose a new port for Nextcloud, e.g., 8081
+    # This is just for direct access if needed; Caddy will handle the main traffic
+    ports:
+      - "8081:80"
+    links:
+      - db
+      - redis
+    depends_on:
+      - db
+      - redis
+    volumes:
+      # The main data directory on your internal LVM storage
+      - "{{ app_data_path }}:/var/www/html"
+    environment:
+      - MYSQL_PASSWORD={{ nextcloud_db_password }}
+      - MYSQL_DATABASE=nextcloud
+      - MYSQL_USER=nextcloud
+      - MYSQL_HOST=db
+      - REDIS_HOST=redis
+    networks:
+      - nextcloud_internal
+      - proxy # Connect to the shared Caddy network
+
+# Define the networks used by this stack
+networks:
+  # The private internal network for these containers
+  nextcloud_internal:
+  # The shared proxy network, which is managed externally by Ansible
+  proxy:
+    external: true

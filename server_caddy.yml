@@ -4,10 +4,13 @@
   become: yes
 
   vars:
+    domain: vojtechmarek.dev
     # Path on the server where the Caddy project will live
     project_path: "/srv/caddy"
     # Path ON THE HOST for our Caddyfile.
     caddyfile_on_host: "{{ project_path }}/Caddyfile"
+    caddy_build_path: "/srv/caddy/build"
+    cloudflare_token_from_vault: "{{ secrets.cloudflare_api_token }}"
 
   tasks:
     - name: Ensure the Caddy project directory exists
@@ -16,6 +19,23 @@
         state: directory
         mode: '0755'
 
+    - name: Copy the Caddy Dockerfile to the server
+      ansible.builtin.copy:
+        src: templates/caddy/build/ # This copies the entire 'caddy' directory
+        dest: "{{ caddy_build_path }}"
+        mode: '0644'
+
+    - name: Build the custom Caddy image with the Cloudflare plugin
+      community.docker.docker_image:
+        name: caddy-custom # The name for our new image
+        tag: latest
+        build:
+          path: "{{ caddy_build_path }}" # The directory containing the Dockerfile
+        source: build
+        state: present
+      # This task needs to be run by a user in the docker group
+      # become: no
+    
     - name: Copy the Caddyfile template to the server
       ansible.builtin.template:
         src: templates/caddy/Caddyfile.private.j2
