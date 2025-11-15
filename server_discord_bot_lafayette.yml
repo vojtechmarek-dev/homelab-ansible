@@ -42,7 +42,7 @@
 
     - name: Pull latest image
       docker_image:
-        name: ghcr.io/vojtechmarek-dev/discord-bot-lafayette:release
+        name: ghcr.io/vojtechmarek-dev/discord-bot-lafayette:main
         source: pull
         force_source: yes
 

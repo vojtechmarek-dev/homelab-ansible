@@ -29,7 +29,7 @@ services:
 
   # The Main Nextcloud Application
   app:
-    image: nextcloud:latest
+    image: nextcloud:31.0.10
     container_name: nextcloud-app
     restart: unless-stopped
     # We expose a new port for Nextcloud, e.g., 8081

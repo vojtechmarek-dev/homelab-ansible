@@ -1,0 +1,33 @@
+---
+- name: Install and configure BorgBackup
+  hosts: homelab-thinkcentre
+  become: yes
+
+  vars:
+    borg_passphrase: "{{ secrets.borgbackup_password }}"
+    backup_repo_path: "/mnt/backups/borg-repo"
+    backup_script_path: "/usr/local/bin/run-backup.sh"
+    backup_sources:
+      - /srv
+      - /etc
+      - /home
+
+  tasks:
+    # ... (All previous tasks are the same: install borg, create repo, init repo, create script) ...
+
+    - name: Create the environment file for the cron job's passphrase
+      ansible.builtin.copy:
+        content: "export BORG_PASSPHRASE='{{ borg_passphrase }}'" # Added 'export' for good measure
+        dest: /etc/borg_env
+        mode: '0600'
+        owner: root
+        group: root
+      no_log: true
+
+    - name: Schedule the backup script to run daily at 2:30 AM
+      ansible.builtin.cron:
+        name: "Borg Server Backup"
+        minute: "30"
+        hour: "2"
+        # The 'job' now includes the command to source the environment file first
+        job: ". /etc/borg_env && {{ backup_script_path }}"

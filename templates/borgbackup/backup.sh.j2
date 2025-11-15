@@ -1,0 +1,40 @@
+    
+#!/bin/bash
+# A script to perform Borg backups, managed by Ansible.
+
+# Exit immediately if a command exits with a non-zero status.
+set -e
+
+# --- Configuration (Pulled from Ansible) ---
+export BORG_REPO='{{ backup_repo_path }}'
+
+echo "Starting Borg backup..."
+
+# Create a new backup archive.
+# {now} is a placeholder for the current timestamp.
+borg create \
+    --verbose \
+    --stats \
+    --list \
+    --filter AME \
+    --compression lz4 \
+    ::'backup-{now:%Y-%m-%d_%H-%M-%S}' \
+    {% for source in backup_sources %}
+    {{ source }} \
+    {% endfor %}
+
+echo "Backup created. Pruning old backups..."
+
+# Prune old archives to save space.
+# Keep the last 7 daily, 4 weekly, and 6 monthly backups.
+borg prune \
+    --verbose \
+    --list \
+    --keep-daily=7 \
+    --keep-weekly=4 \
+    --keep-monthly=6 \
+    $BORG_REPO
+
+echo "Backup and prune complete."
+
+  

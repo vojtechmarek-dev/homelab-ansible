@@ -17,7 +17,7 @@
     - docker-ce
     - docker-ce-cli
     - containerd.io
-    - docker-compose-plugin 
+    - docker-compose-plugin
     state: present
     update_cache: true
 
@@ -45,12 +45,15 @@
     state: directory
     mode: '0755'
 
-- name: Configure Docker to disable IPv6
+- name: Configure Docker to disable IPv6 and set MTU
   ansible.builtin.copy:
     dest: /etc/docker/daemon.json
+    # disabling ipv6 - my isp does not support it
+    # setting mtu to 1280 to avoid fragmentation issues - using tailscale
     content: |
       {
-        "ipv6": false
+        "ipv6": false,
+        "mtu": 1280
       }
     mode: '0644'
 
