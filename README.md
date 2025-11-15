@@ -87,7 +87,6 @@ As stated before some playbooks require secrets variables and shold be run with 
 ansible-playbook -i inventory.yml -i ../ansible-secrets/secrets.yml server_user.yml --ask-vault-pass
 ```
 
-  
 ### Playbook Execution Order
 
 ## Bootstraping the server
@@ -112,6 +111,149 @@ The playbooks currently include the following roles:
 - **base**: Basic configuration of a Linux Debian server.
 - **user**: Adding `xmarek` superuser to the server with ssh access to the server.
 - **docker**: Configuration of Docker service including installing needed packages.
+
+    
+# Adding a New Service to the Homelab
+
+This document is the Standard Operating Procedure (SOP) for deploying a new containerized service to the `homelab-thinkcentre` server. Following these steps ensures that the service is properly configured, networked, secured, and accessible.
+
+## Prerequisites
+
+-   A working Ansible control machine with access to the server.
+-   The service you want to deploy must be available as a Docker image.
+-   Access to the Cloudflare, AdGuard Home, and Tailscale admin panels.
+
+---
+
+## Step 1: Planning & Variable Definition
+
+Before writing any code, define the key attributes of the new service.
+
+-   **Service Name:** A short, lowercase name (e.g., `jellyfin`).
+-   **Docker Image:** The full image name from Docker Hub (e.g., `jellyfin/jellyfin:latest`).
+-   **Hostname:** The desired internal URL (e.g., `jellyfin.vojtechmarek.dev`).
+-   **Internal Port:** The port the application listens on *inside* the container (e.g., `8096`).
+-   **Persistent Data:** Identify which directories inside the container need to be saved. These will be mapped to `/srv/<service-name>/...` on the host.
+
+## Step 2: Public DNS Configuration (Cloudflare)
+
+This step makes the domain "real" so Caddy can get an SSL certificate for it.
+
+-   [ ] Log in to the **Cloudflare Dashboard**.
+-   [ ] Go to the DNS settings for `vojtechmarek.dev`.
+-   [ ] Create a new **CNAME** record:
+    -   **Type:** `CNAME`
+    -   **Name:** The new service name (e.g., `jellyfin`).
+    -   **Content / Target:** `placeholder.vojtechmarek.dev` (your dummy hostname).
+    -   **Proxy status:** **DNS only (Grey Cloud)**. This is mandatory.
+
+## Step 3: Local & Remote DNS Configuration
+
+This step points your private networks to the server, keeping the service off the public internet.
+
+-   [ ] **AdGuard Home (for LAN access):**
+    -   Log in to your AdGuard dashboard (`https://adguardhome.vojtechmarek.dev`).
+    -   Go to **Filters -> DNS Rewrites**.
+    -   Add a new rewrite:
+        -   **Domain:** `jellyfin.vojtechmarek.dev`
+        -   **Answer:** `192.168.0.146` (your server's local IP).
+
+-   [ ] **Tailscale (for remote access):**
+    -   Log in to your Tailscale admin console.
+    -   Go to the **DNS** page.
+    -   Add a new MagicDNS entry:
+        -   **Name:** `jellyfin.vojtechmarek.dev`
+        -   **IP Address:** `homelab-thinkcentre` (your server's Tailscale name).
+
+## Step 4: Ansible Deployment Playbook
+
+Create the new Ansible playbook and associated template files for the service.
+
+1.  **Create the Docker Compose Template:**
+    -   Create a new file: `templates/<service-name>.docker-compose.yml.j2`.
+    -   Define the service, making sure to:
+        -   Use a `container_name`.
+        -   Set `restart: unless-stopped`.
+        -   Map all necessary persistent data volumes to `/srv/<service-name>/...` on the host.
+        -   **Do not** expose ports to the host unless absolutely necessary.
+        -   Connect the container to the shared `proxy` network.
+
+    ```yaml
+    # Example for templates/jellyfin.docker-compose.yml.j2
+    services:
+      jellyfin:
+        image: jellyfin/jellyfin:latest
+        container_name: jellyfin
+        restart: unless-stopped
+        volumes:
+          - "{{ app_config_path }}:/config"
+          - "{{ app_media_path }}:/media"
+        networks:
+          - proxy
+
+    networks:
+      proxy:
+        external: true
+    ```
+
+2.  **Create the Main Playbook:**
+    -   Create a new file: `deploy_<service-name>.yml`.
+    -   Use the standard pattern:
+        -   Define variables for paths (`project_path`, `app_config_path`, etc.).
+        -   Create the necessary directories under `/srv/<service-name>/` with an `ansible.builtin.file` task.
+        -   Copy the `docker-compose.yml.j2` template to the server.
+        -   Run the `community.docker.docker_compose_v2` module.
+        -   Include a handler for restarting the service.
+
+## Step 5: Configure the Reverse Proxy (Caddy)
+
+Tell Caddy how to route traffic to the new service.
+
+-   [ ] Open the Caddyfile template: `templates/Caddyfile.public.j2`.
+-   [ ] Add a new site block for the service:
+
+    ```
+    # In templates/Caddyfile.public.j2
+
+    https://jellyfin.vojtechmarek.dev {
+        tls {
+            dns cloudflare {env.CLOUDFLARE_API_TOKEN}
+        }
+        # Proxy to the new container on its internal port
+        reverse_proxy jellyfin:8096
+    }
+    ```
+
+## Step 6: Deploy and Verify
+
+Run the Ansible playbooks to apply all your changes.
+
+1.  **Run the new service playbook:**
+    ```bash
+    ansible-playbook -i inventory.ini deploy_jellyfin.yml --user xmarek -K
+    ```
+2.  **Run the Caddy playbook** to update its configuration:
+    ```bash
+    ansible-playbook -i inventory.ini deploy_caddy.yml --user xmarek -K
+    ```
+3.  **Verify DNS on your client machine:**
+    -   Flush your DNS cache (`ipconfig /flushdns` on Windows).
+    -   Run `ping jellyfin.vojtechmarek.dev`. It should resolve to `192.168.0.146`.
+4.  **Access the service:**
+    -   Open your browser and navigate to `https://jellyfin.vojtechmarek.dev`.
+    -   You should see the service's setup page or main interface with a valid SSL certificate.
+
+---
+
+## Client-Side Troubleshooting Checklist
+
+If you get a `NS_ERROR_UNKNOWN_HOST` or similar DNS error after deployment:
+
+-   [ ] Did you add the DNS rewrite in **AdGuard Home**?
+-   [ ] Did you add the MagicDNS entry in **Tailscale**?
+-   [ ] Is your device configured to use AdGuard Home as its DNS server (check router DHCP settings)?
+-   [ ] Have you disabled **"Private DNS" / "Secure DNS"** in your phone's or browser's settings?
+-   [ ] Have you tried flushing your computer's DNS cache?
 
 # Home Server Disaster Recovery Plan
 

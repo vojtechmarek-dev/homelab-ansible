@@ -1,0 +1,21 @@
+services:
+  homepage:
+    image: ghcr.io/gethomepage/homepage:latest
+    container_name: homepage
+    environment:
+      # This is the required security setting
+      HOMEPAGE_ALLOWED_HOSTS: "{{ homepage_hostname }}"
+    volumes:
+      # Mount the config directory from the host
+      - "{{ app_config_path }}:/app/config"
+      # Mount the Docker socket in read-only mode for container status widgets
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /:/mnt/host/root:ro      # Mount the host's root filesystem
+      - /srv:/mnt/host/srv:ro    # Mount the host's /srv directory
+    networks:
+      - proxy
+    restart: unless-stopped
+
+networks:
+  proxy:
+    external: true

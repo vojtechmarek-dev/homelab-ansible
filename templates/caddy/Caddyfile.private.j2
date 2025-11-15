@@ -38,3 +38,11 @@ https://adguardhome.{{ domain }} {
 # http://jellyfin.homelab {
 #     reverse_proxy jellyfin-container-name:8096
 # }
+
+https://home.{{ domain }} {
+    tls {
+        dns cloudflare {env.CLOUDFLARE_API_TOKEN}
+    }
+    # Homepage runs on port 3000 inside its container
+    reverse_proxy homepage:3000
+}

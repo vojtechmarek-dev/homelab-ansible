@@ -1,0 +1,39 @@
+---
+- name: Deploy Homepage Dashboard
+  hosts: homelab-thinkcentre
+  become: yes
+
+  vars:
+    app_name: homepage
+    project_path: "/srv/{{ app_name }}"
+    app_config_path: "{{ project_path }}/config"
+    homepage_hostname: "home.vojtechmarek.dev"
+
+  tasks:
+    - name: Ensure Homepage project and config directories exist
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        mode: '0755'
+      loop:
+        - "{{ project_path }}"
+        - "{{ app_config_path }}"
+
+    - name: Copy the Homepage Docker Compose template to the server
+      ansible.builtin.template:
+        src: templates/gethomepage/homepage.docker-compose.yml.j2
+        dest: "{{ project_path }}/docker-compose.yml"
+        mode: '0644'
+      notify: Restart Homepage Service
+
+    - name: Ensure the Homepage service is running
+      community.docker.docker_compose_v2:
+        project_src: "{{ project_path }}"
+        state: present
+
+  handlers:
+    - name: Restart Homepage Service
+      listen: "Restart Homepage Service"
+      community.docker.docker_compose_v2:
+        project_src: "{{ project_path }}"
+        state: present
