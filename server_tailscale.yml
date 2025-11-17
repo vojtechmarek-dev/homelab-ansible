@@ -2,8 +2,7 @@
   hosts: homelab-thinkcentre
   become: yes
   vars:
-    # --- IMPORTANT: CHANGE THIS TO MATCH YOUR HOME NETWORK ---
-    home_lan_subnet: "192.168.0.0/24"
+    home_lan_subnet: "{{ secrets.tailscale_home_lan_subnet }}"
     project_dir: "/srv/tailscale"
     state_dir: "/srv/tailscale/state"
 

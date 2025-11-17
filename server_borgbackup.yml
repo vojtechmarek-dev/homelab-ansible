@@ -1,5 +1,5 @@
 ---
-- name: Install and configure BorgBackup
+- name: Install and Configure BorgBackup
   hosts: homelab-thinkcentre
   become: yes
 
@@ -7,19 +7,50 @@
     borg_passphrase: "{{ secrets.borgbackup_password }}"
     backup_repo_path: "/mnt/backups/borg-repo"
     backup_script_path: "/usr/local/bin/run-backup.sh"
+    borg_env_file: "/etc/borg_env"
     backup_sources:
       - /srv
       - /etc
       - /home
 
   tasks:
-    # ... (All previous tasks are the same: install borg, create repo, init repo, create script) ...
+    - name: Install BorgBackup and FUSE support
+      ansible.builtin.apt:
+        name:
+          - borgbackup
+          - python3-fusepy # Provides 'pyfuse3' for the 'borg mount' feature
+        state: present
+        update_cache: yes
+
+    - name: Ensure the backup repository directory exists
+      ansible.builtin.file:
+        path: "{{ backup_repo_path }}"
+        state: directory
+        mode: '0700' # Make it accessible only by root for security
+        owner: root
+        group: root
+
+    - name: Initialize the Borg repository (runs only once)
+      ansible.builtin.command:
+        cmd: "borg init --encryption=repokey {{ backup_repo_path }}"
+        creates: "{{ backup_repo_path }}/config"
+      environment:
+        BORG_PASSPHRASE: "{{ borg_passphrase }}"
+      no_log: true # Prevents the passphrase from appearing in Ansible logs
+
+    - name: Create the backup script from a template
+      ansible.builtin.template:
+        src: templates/borgbackup/backup.sh.j2
+        dest: "{{ backup_script_path }}"
+        mode: '0755' 
+        owner: root
+        group: root
 
     - name: Create the environment file for the cron job's passphrase
       ansible.builtin.copy:
-        content: "export BORG_PASSPHRASE='{{ borg_passphrase }}'" # Added 'export' for good measure
-        dest: /etc/borg_env
-        mode: '0600'
+        content: "export BORG_PASSPHRASE='{{ borg_passphrase }}'"
+        dest: "{{ borg_env_file }}"
+        mode: '0600' # Make the file readable only by root
         owner: root
         group: root
       no_log: true
@@ -29,5 +60,6 @@
         name: "Borg Server Backup"
         minute: "30"
         hour: "2"
-        # The 'job' now includes the command to source the environment file first
-        job: ". /etc/borg_env && {{ backup_script_path }}"
+        # The job command sources the environment file first to load the passphrase,
+        # then executes the backup script.
+        job: ". {{ borg_env_file }} && {{ backup_script_path }}"

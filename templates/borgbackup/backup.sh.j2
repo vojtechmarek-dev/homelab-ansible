@@ -6,12 +6,18 @@
 set -e
 
 # --- Configuration (Pulled from Ansible) ---
+# The BORG_PASSPHRASE is loaded by the cron job from the env file.
 export BORG_REPO='{{ backup_repo_path }}'
+
+# --- Optional: Healthchecks.io Integration ---
+# This variable is read from the Ansible Vault.
+HEALTHCHECK_URL="{{ secrets.healthcheck_borg_url | default('') }}"
 
 echo "Starting Borg backup..."
 
 # Create a new backup archive.
-# {now} is a placeholder for the current timestamp.
+# {now} is a Borg placeholder for the current timestamp.
+# --filter AME tells Borg to respect .borgignore files (similar to .gitignore).
 borg create \
     --verbose \
     --stats \
@@ -23,10 +29,9 @@ borg create \
     {{ source }} \
     {% endfor %}
 
-echo "Backup created. Pruning old backups..."
+echo "Backup created successfully. Pruning old backups..."
 
-# Prune old archives to save space.
-# Keep the last 7 daily, 4 weekly, and 6 monthly backups.
+# Prune old archives to save space according to the retention policy.
 borg prune \
     --verbose \
     --list \
@@ -37,4 +42,11 @@ borg prune \
 
 echo "Backup and prune complete."
 
-  
+# Ping the healthcheck URL to report success.
+# The script will exit on error before this line is reached.
+if [ -n "$HEALTHCHECK_URL" ]; then
+    echo "Pinging healthcheck..."
+    curl -fsS --retry 3 "$HEALTHCHECK_URL" > /dev/null
+fi
+
+echo "Borg backup script finished."
