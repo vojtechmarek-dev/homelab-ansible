@@ -5,7 +5,7 @@
       set_fact:
         validations_failed: "{{ validations_failed|default([]) + [ 'Unsupported operating system' ] }}"
       when:
-        - not(ansible_facts['distribution'] == "Debian" and ansible_facts['distribution_major_version'] in ['11','12'])
+        - not(ansible_facts['distribution'] == "Debian" and ansible_facts['distribution_major_version'] in ['11','12', '13'])
 
     - name: Validation failures
       debug:

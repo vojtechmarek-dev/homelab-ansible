@@ -1,10 +1,10 @@
 ---
 - name: Deploy Caddy as a Private Reverse Proxy
-  hosts: homelab-thinkcentre
+  hosts: kuzelovlab
   become: yes
 
   vars:
-    domain: vojtechmarek.dev
+    domain: zen132.cz
     # Path on the server where the Caddy project will live
     project_path: "/srv/caddy"
     # Path ON THE HOST for our Caddyfile.

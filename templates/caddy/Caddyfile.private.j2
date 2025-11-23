@@ -8,6 +8,15 @@ https://pdf.{{ domain }} {
     reverse_proxy stirling-pdf:8080
 }
 
+https://fotky.{{ domain }} {
+    # Use the Cloudflare DNS plugin to get a certificate
+    tls {
+        dns cloudflare {env.CLOUDFLARE_API_TOKEN}
+    }
+    reverse_proxy immich_server:2283
+}
+
+
 https://nextcloud.{{ domain }} {
     # This block is for service discovery for calendar/contacts clients
     redir /.well-known/carddav /remote.php/dav/ permanent

@@ -1,43 +1,56 @@
 ---
-- name: Run validations
-  include_tasks: "validations.yml"
-
-- name: Print docker var
-  ansible.builtin.debug:
-    var: docker
-    verbosity: 1
-
-- name: Install prerequisites (Debian)
-  include_tasks: preinstall_debian.yml
-  when: ansible_facts['distribution'] == "Debian"
-
-- name: Install Docker
-  ansible.builtin.package:
+- name: Install Docker prerequisites
+  ansible.builtin.apt:
     name:
-    - docker-ce
-    - docker-ce-cli
-    - containerd.io
-    - docker-compose-plugin
+      - apt-transport-https
+      - ca-certificates
+      - curl
+      - gnupg
+    state: present
+    #update_cache: true
+
+- name: Create directory for apt keyrings
+  ansible.builtin.file:
+    path: /etc/apt/keyrings
+    state: directory
+    mode: '0755'
+
+- name: Download Docker GPG key
+  ansible.builtin.shell: 
+    cmd: curl -fsSL https://download.docker.com/linux/debian/gpg -o /etc/apt/keyrings/docker.asc
+    # curl doesn't set permissions automatically, so we ensure them here
+  args:
+    warn: false # Suppress warning about using curl vs get_url
+
+- name: Ensure GPG key permissions
+  ansible.builtin.file:
+    path: /etc/apt/keyrings/docker.asc
+    mode: '0644'
+
+- name: Add Docker Repository
+  ansible.builtin.apt_repository:
+    # Hardcoding 'bookworm' ensures compatibility with Debian Trixie
+    repo: "deb [arch=amd64 signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/debian bookworm stable"
+    filename: docker
+    state: present
+
+- name: Install Docker Engine and plugins
+  ansible.builtin.apt:
+    name:
+      - docker-ce
+      - docker-ce-cli
+      - containerd.io
+      - docker-compose-plugin
     state: present
     update_cache: true
 
-    
-- name: Ensure prerequisite OS packages for Python Docker SDK are installed
-  ansible.builtin.apt: # Or ansible.builtin.package
+- name: Install Python SDK for Docker (Required for Ansible modules)
+  ansible.builtin.apt:
     name:
-      - python3-pip      # Still good to have pip for other non-system critical packages if needed later
-      - python3-docker   # This is the system package for Docker SDK
-      - python3-requests # This is the system package for requests
-      # - python3-yaml     # For PyYAML, often python3-yaml or python3-ruamel.yaml
-      # - python3-jsondiff # If available and needed
+      - python3-pip
+      - python3-docker
+      - python3-requests
     state: present
-    update_cache: yes # Run apt update before installing
-  when: ansible_os_family == "Debian" # Or more specific like ansible_distribution == "Ubuntu" and ansible_distribution_version >= "23.04"
-  # Add a retry for apt as well
-  retries: 3
-  delay: 10
-  register: apt_install_result
-  until: apt_install_result is success
 
 - name: Ensure Docker config directory exists
   ansible.builtin.file:
@@ -45,25 +58,24 @@
     state: directory
     mode: '0755'
 
-- name: Configure Docker to disable IPv6 and set MTU
+- name: Configure Docker daemon (Disable IPv6 & Set MTU)
   ansible.builtin.copy:
     dest: /etc/docker/daemon.json
-    # disabling ipv6 - my isp does not support it
-    # setting mtu to 1280 to avoid fragmentation issues - using tailscale
     content: |
       {
-        "ipv6": false,
+        "ipv6": true,
         "mtu": 1280
       }
     mode: '0644'
+  notify: Restart Docker Service
 
-- name: Start Docker service
+- name: Start and enable Docker service
   ansible.builtin.service:
     name: docker
     enabled: true
     state: started
 
-- name: Create a shared Docker network
+- name: Create shared 'proxy' network
   community.docker.docker_network:
     name: proxy
     state: present
@@ -72,5 +84,4 @@
   ansible.builtin.user:
     name: "{{ secrets.user.name }}"
     groups: docker
-    append: yes  # VERY IMPORTANT: This adds 'docker' without removing other groups like 'sudo'
-
+    append: yes

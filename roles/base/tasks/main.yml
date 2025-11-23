@@ -62,6 +62,12 @@
     update_cache: true
   tags: ['packages']
 
+- name: Install resolvconf to support dns-nameservers in interfaces file
+  ansible.builtin.apt:
+    name: resolvconf
+    state: present
+    update_cache: yes
+
 - name: "Install man pages"
   apt:
     name: ["man-db", "manpages"]

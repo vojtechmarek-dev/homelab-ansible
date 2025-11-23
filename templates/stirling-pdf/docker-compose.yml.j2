@@ -1,7 +1,6 @@
-version: '3.8'
 services:
   {{ app_name }}:
-    image: docker.stirlingpdf.com/stirlingtools/stirling-pdf:latest
+    image: stirlingtools/stirling-pdf:latest
     container_name: {{ app_name }}
     networks:
       - proxy

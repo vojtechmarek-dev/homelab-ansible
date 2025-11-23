@@ -1,6 +1,6 @@
 ---
 - name: Deploy Lafayette Discord Bot
-  hosts: homelab-pi
+  hosts: homelab-thinkcentre
   become: true
   vars:
     project_name: discord-bot-lafayette
@@ -42,7 +42,7 @@
 
     - name: Pull latest image
       docker_image:
-        name: ghcr.io/vojtechmarek-dev/discord-bot-lafayette:main
+        name: ghcr.io/vojtechmarek-dev/discord-bot-lafayette:release
         source: pull
         force_source: yes
 

@@ -1,0 +1,68 @@
+---
+- name: Configure LVM Storage on Proxmox VM
+  hosts: kuzelovlab # Or your specific group name from inventory
+  become: yes
+
+  vars:
+    # Target the 1TB virtual disk
+    data_disk: /dev/vdb
+    vg_name: data_vg
+
+  tasks:
+    - name: Install LVM2
+      ansible.builtin.apt:
+        name: lvm2
+        state: present
+        update_cache: yes
+
+    - name: Initialize the 1TB disk as a Physical Volume (PV) and create Volume Group
+      community.general.lvg:
+        vg: "{{ vg_name }}"
+        pvs: "{{ data_disk }}"
+        state: present
+
+    # --- Logical Volume for Nextcloud Data (/srv) ---
+    - name: Create Logical Volume for /srv (Docker container Data)
+      community.general.lvol:
+        vg: "{{ vg_name }}"
+        lv: srv
+        size: 750G  # Starting with 500GB. Easy to expand later!
+        resizefs: true
+
+    - name: Format /srv volume (ext4)
+      community.general.filesystem:
+        fstype: ext4
+        dev: "/dev/{{ vg_name }}/srv"
+
+    - name: Mount /srv
+      ansible.posix.mount:
+        path: /srv
+        src: "/dev/{{ vg_name }}/srv"
+        fstype: ext4
+        state: mounted
+
+    # --- Logical Volume for Samba Shares (/mnt/samba_share) ---
+    - name: Create Logical Volume for Samba
+      community.general.lvol:
+        vg: "{{ vg_name }}"
+        lv: samba
+        size: 100%FREE # Use ALL remaining space for Samba/Backups
+        resizefs: true
+
+    - name: Create Samba mount directory
+      ansible.builtin.file:
+        path: /mnt/samba_share
+        state: directory
+        mode: '0755'
+
+    - name: Format Samba volume (ext4)
+      community.general.filesystem:
+        fstype: ext4
+        dev: "/dev/{{ vg_name }}/samba"
+
+    - name: Mount Samba
+      ansible.posix.mount:
+        path: /mnt/samba_share
+        src: "/dev/{{ vg_name }}/samba"
+        fstype: ext4
+        state: mounted

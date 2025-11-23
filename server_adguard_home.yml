@@ -1,6 +1,6 @@
 ---
 - name: Deploy AdGuard Home
-  hosts: homelab-thinkcentre
+  hosts: kuzelovlab
   become: yes
 
   vars:

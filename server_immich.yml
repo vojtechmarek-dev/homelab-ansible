@@ -1,0 +1,49 @@
+---
+- name: Deploy Immich
+  hosts: kuzelovlab
+  become: yes
+
+  vars:
+    # --- Variables ---
+    project_path: "/srv/immich"
+    db_path: "{{ project_path }}/postgres"
+    upload_location: "{{ project_path }}/library"
+
+  tasks:
+    - name: Ensure Immich directories exist
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        mode: '0755'
+        owner: root
+        group: root
+      loop:
+        - "{{ project_path }}"
+        - "{{ db_path }}"
+        - "{{ upload_location }}"
+
+    - name: Copy Immich .env file
+      ansible.builtin.template:
+        src: templates/immich/immich.env.j2
+        dest: "{{ project_path }}/.env"
+        mode: '0644'
+      notify: Restart Immich
+
+    - name: Copy Immich Docker Compose
+      ansible.builtin.template:
+        src: templates/immich/immich.docker-compose.yml.j2
+        dest: "{{ project_path }}/docker-compose.yml"
+        mode: '0644'
+      notify: Restart Immich
+
+    - name: Ensure Immich is running
+      community.docker.docker_compose_v2:
+        project_src: "{{ project_path }}"
+        state: present
+
+  handlers:
+    - name: Restart Immich
+      community.docker.docker_compose_v2:
+        project_src: "{{ project_path }}"
+        state: present
+        recreate: always
