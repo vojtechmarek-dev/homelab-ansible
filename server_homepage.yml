@@ -1,6 +1,6 @@
 ---
 - name: Deploy Homepage Dashboard
-  hosts: homelab-thinkcentre
+  hosts: homepage_servers
   become: yes
 
   vars:

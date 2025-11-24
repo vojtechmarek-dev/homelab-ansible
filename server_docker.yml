@@ -1,6 +1,6 @@
 ---
 - name: Install and configure Docker
-  hosts: kuzelovlab
+  hosts: docker_nodes
   become: true
   roles:
     - docker

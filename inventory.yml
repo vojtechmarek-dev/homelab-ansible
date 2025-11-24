@@ -1,8 +1,78 @@
 all:
-  hosts:
-    homelab-thinkcentre:
-      ansible_host: 192.168.66.166
-    homelab-pi:
-      ansible_host: 192.168.66.167
-    kuzelovlab:
-      ansible_host: 192.168.0.20
+  children:
+    # --- Infrastructure Groups ---
+    proxmox_vms:
+      hosts:
+        kuzelovlab:
+          ansible_host: 192.168.0.20
+        medialab:
+          ansible_host: 192.168.0.30
+    
+    physical_servers:
+      hosts:
+        homelab-thinkcentre:
+          ansible_host: 192.168.66.166
+        homelab-pi:
+          ansible_host: 192.168.66.167
+
+    # --- Functional Groups (The "What runs where") ---
+    docker_nodes:
+      hosts:
+        kuzelovlab:
+        medialab:
+        homelab-thinkcentre:
+        homelab-pi:
+
+    # --- Services ---
+    adguard_servers:
+      hosts:
+        kuzelovlab:
+        homelab-thinkcentre:
+
+    borg_servers:
+      hosts:
+        homelab-thinkcentre:
+
+    caddy_servers:
+      hosts:
+        kuzelovlab:
+        homelab-thinkcentre:
+
+    discord_bot_servers:
+      hosts:
+        homelab-pi:
+
+    homepage_servers:
+      hosts:
+        homelab-thinkcentre:
+
+    immich_servers:
+      hosts:
+        kuzelovlab:
+
+    nextcloud_servers:
+      hosts:
+        homelab-thinkcentre:
+
+    samba_servers:
+      hosts:
+        homelab-thinkcentre:
+        kuzelovlab:
+
+    seafile_servers:
+      hosts:
+        kuzelovlab:
+
+    stirling_pdf_servers:
+      hosts:
+        kuzelovlab:
+        homelab-thinkcentre:
+
+    tailscale_servers:
+      hosts:
+        homelab-thinkcentre:
+        homelab-pi:
+
+    lvm_storage_servers:
+      hosts:
+        homelab-thinkcentre:

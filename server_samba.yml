@@ -1,6 +1,6 @@
 ---
 - name: Deploy Samba File Share
-  hosts: homelab-thinkcentre
+  hosts: samba_servers
   become: yes
 
   vars:

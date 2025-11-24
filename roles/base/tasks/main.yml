@@ -58,6 +58,7 @@
       - sysstat
       - iotop
       - python3-pip
+      - resolvconf
     state: present
     update_cache: true
   tags: ['packages']

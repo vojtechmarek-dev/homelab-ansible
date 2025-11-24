@@ -1,0 +1,64 @@
+---
+- name: Deploy Media Stack
+  hosts: medialab
+  become: yes
+
+  vars:
+    # Configs on SSD (Fast)
+    project_path: "/srv/medialab"
+    config_path: "{{ project_path }}/config"
+    # Media on HDD (Big)
+    data_path: "/data"
+
+  tasks:
+    - name: Ensure Config directory structure exists (SSD)
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        mode: '0755'
+      loop:
+        - "{{ project_path }}"
+        - "{{ config_path }}"
+        - "{{ config_path }}/prowlarr"
+        - "{{ config_path }}/radarr"
+        - "{{ config_path }}/sonarr"
+        - "{{ config_path }}/qbittorrent"
+        - "{{ config_path }}/jellyfin"
+        - "{{ config_path }}/bazarr"
+        - "{{ config_path }}/jellyseerr"
+        - "{{ config_path }}/jellystat"
+        - "{{ config_path }}/jellystat/data"       # DB data
+        - "{{ config_path }}/jellystat/backup-data" # Backup data
+
+    - name: Ensure Media directory structure exists (HDD)
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        mode: '0775'
+        owner: "1000"
+        group: "1000"
+      loop:
+        - "{{ data_path }}"
+        - "{{ data_path }}/torrents"
+        - "{{ data_path }}/media"
+        - "{{ data_path }}/media/movies"
+        - "{{ data_path }}/media/tv"
+
+    - name: Copy Docker Compose
+      ansible.builtin.template:
+        src: templates/medialab.docker-compose.yml.j2
+        dest: "{{ project_path }}/docker-compose.yml"
+        mode: '0644'
+      notify: Restart Media Stack
+
+    - name: Ensure Media Stack is running
+      community.docker.docker_compose_v2:
+        project_src: "{{ project_path }}"
+        state: present
+
+  handlers:
+    - name: Restart Media Stack
+      community.docker.docker_compose_v2:
+        project_src: "{{ project_path }}"
+        state: present
+        recreate: always

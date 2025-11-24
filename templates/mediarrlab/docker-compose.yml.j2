@@ -1,0 +1,201 @@
+version: "3.8"
+
+services:
+  # --- 1. VPN Gateway (Gluetun) ---
+  gluetun:
+    image: qmcgaw/gluetun
+    container_name: gluetun
+    cap_add:
+      - NET_ADMIN
+    devices:
+      - /dev/net/tun:/dev/net/tun
+    ports:
+      - 8888:8888/tcp # HTTP Proxy
+      - 8080:8080/tcp # qBittorrent Web UI 
+      - 6881:6881 # qbittorrent torrent port
+      - 9696:9696/tcp # Prowlarr Web UI 
+    environment:
+      - VPN_SERVICE_PROVIDER={{ secrets.vpn_service_provider }}
+      - VPN_TYPE=wireguard
+      - FIREWALL_VPN_INPUT_PORTS={{ secrets.vpn_firewall_vpn_input_ports }}
+      - WIREGUARD_PRESHARED_KEY={{ secrets.vpn_wireguard_preshared_key }}
+      - WIREGUARD_PRIVATE_KEY={{ secrets.vpn_wireguard_private_key }}
+      - WIREGUARD_PUBLIC_KEY={{ secrets.vpn_wireguard_public_key }}
+      - WIREGUARD_ADDRESSES={{ secrets.vpn_wireguard_addresses }}
+      # LAN Network is required so you can access the Web UIs from your laptop
+      - FIREWALL_OUTBOUND_SUBNETS=192.168.0.0/24
+      - HEALTH_VPN_DURATION_INITIAL=120s
+      - TZ=Europe/Prague
+      - PUID=1000
+      - PGID=1000
+    healthcheck:
+      test: ping -c 1 www.google.com || exit 1
+      interval: 20s
+      timeout: 10s
+      retries: 5
+    restart: unless-stopped
+
+  # --- 2. The Downloader ---
+  qbittorrent:
+    image: lscr.io/linuxserver/qbittorrent:latest
+    container_name: qbittorrent
+    network_mode: "service:gluetun" # TRAFFIC GOES THROUGH VPN
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=Europe/Prague
+      - WEBUI_PORT=8080 # must match "qbittorrent web interface" port number in gluetun's service above
+      - TORRENTING_PORT={{ secrets.vpn_firewall_vpn_input_ports }}
+    volumes:
+      - /srv/medialab/config/qbittorrent:/config
+      - /data/torrents:/data/torrents
+    depends_on:
+      gluetun:
+        condition: service_healthy
+        restart: true
+    healthcheck:
+      test: ping -c 1 www.google.com || exit 1
+      interval: 60s
+      retries: 3
+      start_period: 20s
+      timeout: 10s
+    restart: unless-stopped
+
+  # 'qBittorrent Stalls with VPN Timeout' - monitor and restart qbittorrent if VPN drops
+  deunhealth:
+    image: qmcgaw/deunhealth
+    container_name: deunhealth
+    network_mode: "none"
+    environment:
+      - LOG_LEVEL=info
+      - HEALTH_SERVER_ADDRESS=127.0.0.1:9999
+      - TZ=${TZ}
+    restart: always
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+
+  # --- 3. The Indexer Manager ---
+  prowlarr:
+    image: lscr.io/linuxserver/prowlarr:latest
+    container_name: prowlarr
+    network_mode: "service:gluetun" # TRAFFIC GOES THROUGH VPN
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=Europe/Prague
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /srv/medialab/config/prowlarr:/config
+    depends_on:
+      gluetun:
+        condition: service_healthy
+        restart: true
+    restart: unless-stopped
+
+  # --- 4. Movie Manager ---
+  radarr:
+    image: lscr.io/linuxserver/radarr:latest
+    container_name: radarr
+    ports:
+      - 7878:7878
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=Europe/Prague
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /srv/medialab/config/radarr:/config
+      - /data:/data # Map root /data for Atomic Moves
+    restart: unless-stopped
+
+  # --- 5. TV Show Manager ---
+  sonarr:
+    image: lscr.io/linuxserver/sonarr:latest
+    container_name: sonarr
+    ports:
+      - 8989:8989
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=Europe/Prague
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /srv/medialab/config/sonarr:/config
+      - /data:/data
+    restart: unless-stopped
+
+  # --- 6. Subtitle Manager ---
+  bazaar:
+    image: lscr.io/linuxserver/bazarr:latest
+    container_name: bazarr
+    ports:
+      - 6767:6767
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=Europe/Prague
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /srv/medialab/config/bazarr:/config
+      - /data/media:/data/media
+    restart: unless-stopped
+
+  # --- 7. Request Manager ---
+  jellyseerr:
+    image: fallenbagel/jellyseerr:latest
+    container_name: jellyseerr
+    ports:
+      - 5055:5055
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=Europe/Prague
+    volumes:
+      - /srv/medialab/config/jellyseerr:/app/config
+    restart: unless-stopped
+
+  # --- 8. Media Server ---
+  jellyfin:
+    image: lscr.io/linuxserver/jellyfin:latest
+    container_name: jellyfin
+    ports:
+      - 8096:8096
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=Europe/Prague
+    volumes:
+      - /srv/medialab/config/jellyfin:/config
+      - /data/media:/data/media
+    devices:
+      - /dev/dri:/dev/dri # Hardware Transcoding
+    restart: unless-stopped
+
+  jellystat-db:
+    image: postgres:15.2
+    container_name: jellystat-db
+    restart: unless-stopped
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD={{ secrets.jellystat_db_password }}
+    volumes:
+      - /srv/medialab/config/jellystat/data:/var/lib/postgresql/data
+
+  # --- 9. JellyStat ---
+  jellystat:
+    image: cyfershepard/jellystat:latest
+    container_name: jellystat
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: mypassword
+      POSTGRES_IP: jellystat-db
+      POSTGRES_PORT: 5432
+      JWT_SECRET: "my-secret-jwt-key"
+      TZ: America/Los_Angeles
+    volumes:
+      - /srv/medialab/config/jellystat/backup-data:/app/backend/backup-data
+    ports:
+      - "3000:3000"
+    depends_on:
+      - jellystat-db

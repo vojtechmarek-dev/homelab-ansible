@@ -1,6 +1,6 @@
 ---
 - name: Deploy AdGuard Home
-  hosts: kuzelovlab
+  hosts: adguard_servers
   become: yes
 
   vars:

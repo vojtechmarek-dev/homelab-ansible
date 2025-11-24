@@ -1,0 +1,38 @@
+---
+- name: Configure HDD Storage for Media Lab
+  hosts: medialab
+  become: yes
+
+  vars:
+    data_disk: /dev/vdb # The HDD
+    vg_name: media_vg
+
+  tasks:
+    - name: Install LVM2
+      ansible.builtin.apt:
+        name: lvm2
+        state: present
+
+    - name: Initialize HDD Physical Volume
+      community.general.lvg:
+        vg: "{{ vg_name }}"
+        pvs: "{{ data_disk }}"
+
+    - name: Create Logical Volume for Media Data
+      community.general.lvol:
+        vg: "{{ vg_name }}"
+        lv: data
+        size: 100%FREE
+        resizefs: true
+
+    - name: Format Data volume
+      community.general.filesystem:
+        fstype: ext4
+        dev: "/dev/{{ vg_name }}/data"
+
+    - name: Mount /data
+      ansible.posix.mount:
+        path: /data # This is the dedicated HDD mount point
+        src: "/dev/{{ vg_name }}/data"
+        fstype: ext4
+        state: mounted

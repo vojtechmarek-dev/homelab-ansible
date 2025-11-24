@@ -1,6 +1,6 @@
 ---
 - name: Deploy Caddy as a Private Reverse Proxy
-  hosts: kuzelovlab
+  hosts: caddy_servers
   become: yes
 
   vars:

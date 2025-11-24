@@ -1,5 +1,5 @@
 - name: Deploy Tailscale Subnet Router
-  hosts: homelab-thinkcentre
+  hosts: tailscale_servers
   become: yes
   vars:
     home_lan_subnet: "{{ secrets.tailscale_home_lan_subnet }}"

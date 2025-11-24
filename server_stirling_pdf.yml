@@ -1,6 +1,6 @@
 ---
 - name: Deploy Stirling PDF using Docker Compose
-  hosts: kuzelovlab
+  hosts: stirling_pdf_servers
   become: yes # Needed for managing directories and Docker Compose
 
   vars:

@@ -1,6 +1,6 @@
 ---
 - name: Create my user with ssh access_key and disable root access
-  hosts: kuzelovlab
+  hosts: all
   become: true
   roles:
     - role: user
