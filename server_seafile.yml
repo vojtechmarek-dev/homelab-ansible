@@ -1,0 +1,47 @@
+---
+- name: Deploy Seafile
+  hosts: kuzelovlab
+  become: yes
+
+  vars:
+    domain: zen132.cz
+    project_path: "/srv/seafile"
+    
+    # Database goes on the standard /srv partition
+    db_path: "{{ project_path }}/db"
+    
+    # BULK DATA goes on the large partition (same physical disk in VM, but logical separation)
+    # We put it in a folder separate from 'public' so Samba users can't mess with it
+    app_data_path: "/mnt/samba_share/seafile_data"
+
+  tasks:
+    - name: Ensure Seafile directories exist
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        mode: '0755'
+        owner: root
+        group: root
+      loop:
+        - "{{ project_path }}"
+        - "{{ db_path }}"
+        - "{{ app_data_path }}"
+
+    - name: Copy Seafile Docker Compose
+      ansible.builtin.template:
+        src: templates/seafile/seafile.docker-compose.yml.j2
+        dest: "{{ project_path }}/docker-compose.yml"
+        mode: '0644'
+      notify: Restart Seafile
+
+    - name: Ensure Seafile is running
+      community.docker.docker_compose_v2:
+        project_src: "{{ project_path }}"
+        state: present
+
+  handlers:
+    - name: Restart Seafile
+      community.docker.docker_compose_v2:
+        project_src: "{{ project_path }}"
+        state: present
+        recreate: always

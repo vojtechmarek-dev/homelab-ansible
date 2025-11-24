@@ -16,6 +16,15 @@ https://fotky.{{ domain }} {
     reverse_proxy immich_server:2283
 }
 
+https://disk.{{ domain }} {
+    # Use the Cloudflare DNS plugin to get a certificate
+    tls {
+        dns cloudflare {env.CLOUDFLARE_API_TOKEN}
+    }
+    reverse_proxy seafile:80
+}
+
+
 
 https://nextcloud.{{ domain }} {
     # This block is for service discovery for calendar/contacts clients
