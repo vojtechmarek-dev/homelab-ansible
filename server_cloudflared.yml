@@ -1,0 +1,18 @@
+---
+- name: Deploy Cloudflare Tunnel
+  hosts: kuzelovlab
+  become: yes
+
+  vars:
+    cloudflared_token: "{{ secrets.cloudflared_token }}"
+
+  tasks:
+    - name: Deploy Cloudflare Tunnel Container
+      community.docker.docker_container:
+        name: cloudflared
+        image: cloudflare/cloudflared:latest
+        restart_policy: unless-stopped
+        # Connects using the token
+        command: "tunnel --no-autoupdate run --token {{ cloudflared_token }}"
+        networks:
+          - name: proxy # MUST be on the same network as Caddy

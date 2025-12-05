@@ -1,0 +1,141 @@
+---
+- Infrastruktura:
+    - AdGuard Home:
+        icon: adguard-home
+        href: http://adguardhome.{{ domain }}
+        description: Vlastní DNS a blokování reklam
+        container: adguard-home
+        
+    - Caddy:
+        icon: caddy
+        Description: Reverzní Proxy a SSL Certifikáty
+        container: caddy
+
+    - Cloudflare Tunnel:
+        icon: cloudflare.png
+        href: https://one.dash.cloudflare.com/
+        description: Tunnely pro bezpečný přístup z venčí
+        container: cloudflared
+        widget:
+            type: cloudflared
+            accountid: {{ secrets.cloudflared_accountid }} # from zero trust dashboard url e.g. https://one.dash.cloudflare.com/<accountid>/home/quick-start
+            tunnelid: {{ secrets.cloudflared_tunnelid }} # found in tunnels dashboard under the tunnel name
+            key: {{ secrets.cloudflared_tunnel_api_key }} # api token with `Account.Cloudflare Tunnel:Read` https://dash.cloudflare.com/profile/api-tokens
+
+- Náš Cloud a Data:
+    - Immich:
+        icon: immich
+        href: https://fotky.{{ domain }}
+        description: Zálohování Fotek a Videa (dostupné zevnitř i z venčí)
+        container: immich_server
+        widget:
+            type: immich
+            url: http://immich-server:2283
+            key: {{ secrets.immich_stats_api_key }}
+            fields: ["photos", "videos", "storage"]
+            version: 2
+
+    - Home Assistant:
+        icon: home-assistant
+        href: https://struhadla.cz
+        description: Home assitant (moving soon)
+        siteMonitor: https://struhadla.cz
+
+    - Seafile:
+        icon: seafile
+        href: https://disk.{{ domain }}
+        container: seafile
+        description: Náš vlastní Disk
+
+    - Samba Share:
+        icon: samba-server
+        href: smb://192.168.0.20/public
+        description: Lokální Sdílení Souborů
+        container: samba
+
+- Náš Zenflix:
+    - Jellyfin:
+        icon: jellyfin
+        href: https://jellyfin.{{ domain }}
+        description: Přehrávač Filmů a Seriálů
+        siteMonitor: http://192.168.0.30:8096
+        widget:
+            type: jellyfin
+            url: http://192.168.0.30:8096
+            key: {{ secrets.jellyfin_api_key}}
+            fields: ["movies", "series", "episodes"]
+            enableBlocks: true # Shows "Now Playing"widget:
+            enableNowPlaying: true # optional, defaults to true
+            enableUser: false # optional, defaults to false
+            enableMediaControl: false # optional, defaults to true
+            showEpisodeNumber: true # optional, defaults to false
+            expandOneStreamToTwoRows: false # optional, defaults to true
+
+    - ToChcu!:
+        icon: jellyseerr
+        href: https://tochcu.{{ domain }}
+        description: Žádosti o Filmy a Seriály
+        siteMonitor: http://192.168.0.30:5055
+        widget:
+            type: jellyseerr
+            url: http://192.168.0.30:5055
+            key: {{ secrets.jellyserr_api_key }}
+
+    - Statistiky Sledování:
+        icon: jellystat
+        href: https://jellystat.{{ domain }}
+        description: Statistiky sledování
+        siteMonitor: http://192.168.0.30:8082
+        widget:
+            type: jellystat
+            url: http://192.168.0.30:8082
+            key: {{ secrets.jellystat_api_key }}
+            days: 30 # optional, defaults to 30
+            fields: ["movies", "episodes"]
+
+
+- Pirátská zátoka:
+    - Radarr:
+        icon: radarr
+        href: https://radarr.{{ domain }}
+        description: Filmy
+        siteMonitor: http://192.168.0.30:7878
+        widget:
+            type: radarr
+            url: http://192.168.0.30:7878
+            key: {{ secrets.radarr_api_key }}
+            enableQueue: true
+            fielads: ["wanted", "missing", "queued", "movies"]
+
+    - Sonarr:
+        icon: sonarr
+        href: https://sonarr.{{ domain }}
+        description: Seriály
+        siteMonitor: http://192.168.0.30:8989
+        widget:
+            type: sonarr
+            url: http://192.168.0.30:8989
+            key: {{ secrets.sonarr_api_key }}
+            enableQueue: true
+            fields: ["wanted", "queued", "series"]
+
+    - Prowlarr:
+        icon: prowlarr
+        href: https://prowlarr.{{ domain }}
+        description: Indexery
+        siteMonitor: http://192.168.0.30:9696
+        widget:
+            type: prowlarr
+            url: http://192.168.0.30:9696
+            key: {{ secrets.prowlarr_api_key }}
+
+    - Bazarr:
+        icon: bazarr
+        href: https://bazarr.{{ domain }}
+        description: Titulky
+        siteMonitor: http://192.168.0.30:6767
+        widget:
+            type: bazarr
+            url: http://192.168.0.30:6767
+            key: {{ secrets.bazarr_api_key }}
+            fields: ["missingEpisodes", "missingMovies"]

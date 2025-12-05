@@ -1,5 +1,14 @@
 # This is a private Caddyfile for internal services
 
+
+# Homepage Dashboard (Root Domain)
+https://{{ domain }} {
+    tls { 
+        dns cloudflare {env.CLOUDFLARE_API_TOKEN} 
+    }
+    reverse_proxy homepage:3000
+}
+
 https://pdf.{{ domain }} {
     # Use the Cloudflare DNS plugin to get a certificate
     tls {
@@ -26,18 +35,18 @@ https://disk.{{ domain }} {
 
 
 
-https://nextcloud.{{ domain }} {
-    # This block is for service discovery for calendar/contacts clients
-    redir /.well-known/carddav /remote.php/dav/ permanent
-    redir /.well-known/caldav /remote.php/dav/ permanent
-
-    tls {
-        dns cloudflare {env.CLOUDFLARE_API_TOKEN}
-    }
-
-    # The reverse_proxy directive
-    reverse_proxy nextcloud-app:80
-}
+# https://nextcloud.{{ domain }} {
+#     # This block is for service discovery for calendar/contacts clients
+#     redir /.well-known/carddav /remote.php/dav/ permanent
+#     redir /.well-known/caldav /remote.php/dav/ permanent
+# 
+#     tls {
+#         dns cloudflare {env.CLOUDFLARE_API_TOKEN}
+#     }
+# 
+#     # The reverse_proxy directive
+#     reverse_proxy nextcloud-app:80
+# }
 
 https://adguardhome.{{ domain }} {
     tls {
@@ -57,10 +66,82 @@ https://adguardhome.{{ domain }} {
 #     reverse_proxy jellyfin-container-name:8096
 # }
 
-https://home.{{ domain }} {
+# https://home.{{ domain }} {
+#     tls {
+#         dns cloudflare {env.CLOUDFLARE_API_TOKEN}
+#     }
+#     # Homepage runs on port 3000 inside its container
+#     reverse_proxy homepage:3000
+# }
+
+# --- Media Lab Services (On Media VM .30) ---
+
+# Jellyfin (Media Player)
+https://jellyfin.{{ domain }} {
     tls {
         dns cloudflare {env.CLOUDFLARE_API_TOKEN}
     }
-    # Homepage runs on port 3000 inside its container
-    reverse_proxy homepage:3000
+
+    reverse_proxy 192.168.0.30:8096
+}
+
+# Jellystat (Statistics) - Mapped to 8082
+https://jellystat.{{ domain }} {
+    tls { 
+        dns cloudflare {env.CLOUDFLARE_API_TOKEN} 
+    }
+
+    reverse_proxy 192.168.0.30:8082
+}
+
+# Sonarr (TV Shows) - Mapped to 8989
+https://sonarr.{{ domain }} {
+    tls {
+        dns cloudflare {env.CLOUDFLARE_API_TOKEN} 
+    }
+
+    reverse_proxy 192.168.0.30:8989
+}
+
+# Radarr (Movies) - Mapped to 7878
+https://radarr.{{ domain }} {
+    tls {
+        dns cloudflare {env.CLOUDFLARE_API_TOKEN} 
+    }
+
+    reverse_proxy 192.168.0.30:7878
+}
+
+# Bazarr (Subtitles) - Mapped to 6767
+https://bazarr.{{ domain }} {
+    tls {
+        dns cloudflare {env.CLOUDFLARE_API_TOKEN}
+    }
+
+    reverse_proxy 192.168.0.30:6767
+}
+
+# Prowlarr (Indexers) - Mapped to 9696 (via Gluetun)
+https://prowlarr.{{ domain }} {
+    tls {
+        dns cloudflare {env.CLOUDFLARE_API_TOKEN}
+    }
+
+    reverse_proxy 192.168.0.30:9696
+}
+
+# qBittorrent (Downloads) - Mapped to 8080 (via Gluetun)
+https://torrents.{{ domain }} {
+    tls {
+        dns cloudflare {env.CLOUDFLARE_API_TOKEN}
+    }
+
+    reverse_proxy 192.168.0.30:8080
+}
+
+https://tochcu.{{ domain }} {
+    tls {
+        dns cloudflare {env.CLOUDFLARE_API_TOKEN}
+    }
+    reverse_proxy 192.168.0.30:5055
 }

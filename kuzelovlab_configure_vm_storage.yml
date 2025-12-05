@@ -26,7 +26,7 @@
       community.general.lvol:
         vg: "{{ vg_name }}"
         lv: srv
-        size: 750G  # Starting with 500GB. Easy to expand later!
+        size: 750G
         resizefs: true
 
     - name: Format /srv volume (ext4)

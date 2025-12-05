@@ -1,16 +1,11 @@
-- name: Create user
+- name: Create user with sudo access
   user:
     name: "{{ secrets.user.name }}"
-    # need to use string itermediate pipe because of password_hash by itself does not work with vault password get from variables
     password: "{{ secrets.user.password | string | password_hash('sha512') }}"
     shell: /bin/bash
     createhome: yes
-
-- name: Add user to sudoers group
-  user:
-    name: "{{ secrets.user.name }}"
     groups: sudo
-    append: yes
+    append: yes  # Ensures we don't remove user from other groups if they exist
 
 - name: Create authorized_key for user
   ansible.posix.authorized_key:
@@ -18,3 +13,12 @@
     state: present
     key: "{{ secrets.user.authorized_key }}"
     exclusive: true
+
+- name: Allow user to run sudo without a password
+  copy:
+    dest: "/etc/sudoers.d/{{ secrets.user.name }}"
+    content: "{{ secrets.user.name }} ALL=(ALL) NOPASSWD: ALL"
+    owner: root
+    group: root
+    mode: '0440'
+    validate: 'visudo -cf %s'

@@ -1,0 +1,38 @@
+---
+# For configuration options and examples, please see:
+# https://gethomepage.dev/configs/settings/
+
+title:
+  Zen v Kuželovu
+
+background:
+  image: /images/homepage_bg_2.jpeg
+  blur: sm # sm, "", md, xl... see https://tailwindcss.com/docs/backdrop-blur
+  saturate: 70 # 0, 50, 100... see https://tailwindcss.com/docs/backdrop-saturate
+  brightness: 50 # 0, 50, 75... see https://tailwindcss.com/docs/backdrop-brightness
+  opacity: 100 # 0-100
+
+# --- THIS IS THE LAYOUT SECTION ---
+layout:
+  # Row 1: Cloud & Data (Your personal files)
+  Náš Cloud a Data:
+    style: row
+    columns: 4
+
+  # Row 2: Media (Jellyfin/Seerr)
+  Náš Zenflix:
+    style: row
+    columns: 3
+
+  # Row 3: Automation & Downloads (The *Arr stack)
+  # We can group these two service blocks together visually if we want,
+  # OR list them separately. Here they are separate rows.
+  Pirátská zátoka:
+    style: row
+    columns: 4
+
+  # Row 4: Infrastructure (Network stuff)
+  Infrastruktura:
+    style: row
+    columns: 4
+  

@@ -1,0 +1,11 @@
+---
+- name: Harden SSH Security
+  hosts: all
+  become: yes
+
+  vars:
+    ssh_public_key: "{{ secrets.daily_driver_user.authorized_key }}"
+    user_id: "{{ secrets.daily_driver_user.name }}"
+
+  roles:
+    - ssh_security

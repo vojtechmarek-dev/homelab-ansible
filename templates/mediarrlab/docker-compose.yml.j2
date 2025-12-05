@@ -12,15 +12,16 @@ services:
     ports:
       - 8888:8888/tcp # HTTP Proxy
       - 8080:8080/tcp # qBittorrent Web UI 
-      - 6881:6881 # qbittorrent torrent port
+      - 6881:6881/tcp # qbittorrent torrent port
+      - 6881:6881/udp # qbittorrent torrent port (UDP is important for torrents)
       - 9696:9696/tcp # Prowlarr Web UI 
     environment:
       - VPN_SERVICE_PROVIDER={{ secrets.vpn_service_provider }}
       - VPN_TYPE=wireguard
       - FIREWALL_VPN_INPUT_PORTS={{ secrets.vpn_firewall_vpn_input_ports }}
-      - WIREGUARD_PRESHARED_KEY={{ secrets.vpn_wireguard_preshared_key }}
+      - WIREGUARD_PRESHARED_KEY={{ secrets.vpn_wireguard_preshared_key | default('') }}
       - WIREGUARD_PRIVATE_KEY={{ secrets.vpn_wireguard_private_key }}
-      - WIREGUARD_PUBLIC_KEY={{ secrets.vpn_wireguard_public_key }}
+      - WIREGUARD_PUBLIC_KEY={{ secrets.vpn_wireguard_public_key | default('') }}
       - WIREGUARD_ADDRESSES={{ secrets.vpn_wireguard_addresses }}
       # LAN Network is required so you can access the Web UIs from your laptop
       - FIREWALL_OUTBOUND_SUBNETS=192.168.0.0/24
@@ -40,6 +41,8 @@ services:
     image: lscr.io/linuxserver/qbittorrent:latest
     container_name: qbittorrent
     network_mode: "service:gluetun" # TRAFFIC GOES THROUGH VPN
+    labels:
+      - deunhealth.restart.on.unhealthy=true # Enable deunhealth monitoring
     environment:
       - PUID=1000
       - PGID=1000
@@ -52,13 +55,6 @@ services:
     depends_on:
       gluetun:
         condition: service_healthy
-        restart: true
-    healthcheck:
-      test: ping -c 1 www.google.com || exit 1
-      interval: 60s
-      retries: 3
-      start_period: 20s
-      timeout: 10s
     restart: unless-stopped
 
   # 'qBittorrent Stalls with VPN Timeout' - monitor and restart qbittorrent if VPN drops
@@ -69,7 +65,7 @@ services:
     environment:
       - LOG_LEVEL=info
       - HEALTH_SERVER_ADDRESS=127.0.0.1:9999
-      - TZ=${TZ}
+      - TZ=Europe/Prague
     restart: always
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
@@ -78,7 +74,7 @@ services:
   prowlarr:
     image: lscr.io/linuxserver/prowlarr:latest
     container_name: prowlarr
-    network_mode: "service:gluetun" # TRAFFIC GOES THROUGH VPN
+    network_mode: "service:gluetun"
     environment:
       - PUID=1000
       - PGID=1000
@@ -89,7 +85,6 @@ services:
     depends_on:
       gluetun:
         condition: service_healthy
-        restart: true
     restart: unless-stopped
 
   # --- 4. Movie Manager ---
@@ -105,7 +100,7 @@ services:
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /srv/medialab/config/radarr:/config
-      - /data:/data # Map root /data for Atomic Moves
+      - /data:/data
     restart: unless-stopped
 
   # --- 5. TV Show Manager ---
@@ -168,34 +163,39 @@ services:
       - /srv/medialab/config/jellyfin:/config
       - /data/media:/data/media
     devices:
-      - /dev/dri:/dev/dri # Hardware Transcoding
+      - /dev/dri:/dev/dri
     restart: unless-stopped
 
+  # --- 9. JellyStat DB ---
   jellystat-db:
     image: postgres:15.2
     container_name: jellystat-db
     restart: unless-stopped
     environment:
       - POSTGRES_USER=postgres
+      # Use the secret variable here
       - POSTGRES_PASSWORD={{ secrets.jellystat_db_password }}
     volumes:
       - /srv/medialab/config/jellystat/data:/var/lib/postgresql/data
 
-  # --- 9. JellyStat ---
+  # --- 10. JellyStat App ---
   jellystat:
     image: cyfershepard/jellystat:latest
     container_name: jellystat
     restart: unless-stopped
     environment:
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: mypassword
+      # Use the secret variable here
+      POSTGRES_PASSWORD: {{ secrets.jellystat_db_password }}
       POSTGRES_IP: jellystat-db
       POSTGRES_PORT: 5432
-      JWT_SECRET: "my-secret-jwt-key"
-      TZ: America/Los_Angeles
+      # Use the secret variable here
+      JWT_SECRET: "{{ secrets.jellystat_jwt_secret }}"
+      TZ: Europe/Prague
     volumes:
       - /srv/medialab/config/jellystat/backup-data:/app/backend/backup-data
     ports:
-      - "3000:3000"
+      # Changed to 8082 to avoid conflict with AdGuard (3000) or others
+      - "8082:3000"
     depends_on:
       - jellystat-db

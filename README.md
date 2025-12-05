@@ -1,7 +1,7 @@
 
 # Ansible Playbooks for Home Server Setup
 
-This repository contains personal Ansible playbooks designed for setting up and managing a home server. These playbooks document each step to easily replicate the setup on new servers, such as the Raspberry Pi 4 currently in use.
+This repository contains personal Ansible playbooks designed for setting up and managing a home server. These playbooks document each step to easily replicate the setup on managed new servers currently in use.
 
 ## Introduction to Ansible
 

@@ -1,0 +1,34 @@
+---
+- name: Deploy Watchtower (Auto-Updater)
+  # Target a group containing both VMs, or list them: 'kuzelovlab, medialab'
+  hosts: tailscale_servers
+  become: yes
+
+  vars:
+    project_path: "/srv/watchtower"
+
+  tasks:
+    - name: Ensure Watchtower directory exists
+      ansible.builtin.file:
+        path: "{{ project_path }}"
+        state: directory
+        mode: '0755'
+
+    - name: Copy Watchtower Docker Compose
+      ansible.builtin.template:
+        src: templates/watchtower/docker-compose.yml.j2
+        dest: "{{ project_path }}/docker-compose.yml"
+        mode: '0644'
+      notify: Restart Watchtower
+
+    - name: Ensure Watchtower is running
+      community.docker.docker_compose_v2:
+        project_src: "{{ project_path }}"
+        state: present
+
+  handlers:
+    - name: Restart Watchtower
+      community.docker.docker_compose_v2:
+        project_src: "{{ project_path }}"
+        state: present
+        recreate: always

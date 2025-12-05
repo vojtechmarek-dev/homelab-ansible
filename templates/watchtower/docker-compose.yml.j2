@@ -1,0 +1,16 @@
+services:
+  watchtower:
+    image: containrrr/watchtower:latest
+    container_name: watchtower
+    volumes:
+      # Critical: Needs access to the Docker socket to control other containers
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      - TZ=Europe/Prague
+      - WATCHTOWER_CLEANUP=true # Delete old images after update
+      - WATCHTOWER_SCHEDULE=0 0 4 * * * # Run at 04:00 every day (Cron syntax)
+      - DOCKER_API_VERSION=1.45
+      # - WATCHTOWER_INCLUDE_STOPPED=true # Uncomment if you want to update stopped containers too
+    restart: unless-stopped
+    networks:
+      - default

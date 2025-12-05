@@ -4,7 +4,7 @@
   become: yes
 
   vars:
-    domain: zen132.cz
+    domain: zen132.cz #vojtechmarek.dev
     # Path on the server where the Caddy project will live
     project_path: "/srv/caddy"
     # Path ON THE HOST for our Caddyfile.
@@ -41,7 +41,7 @@
         src: templates/caddy/Caddyfile.private.j2
         dest: "{{ caddyfile_on_host }}"
         mode: '0644'
-      notify: Reload Caddy
+      notify: Restart Caddy Service
 
     - name: Copy the Docker Compose template to the server
       ansible.builtin.template:
@@ -57,14 +57,8 @@
         state: present
 
   handlers:
-    # Handler for when the Caddyfile itself changes (no container restart needed)
-    - name: Reload Caddy
-      listen: "Reload Caddy"
-      community.docker.docker_container_exec:
-        container: caddy
-        command: caddy reload --config /etc/caddy/Caddyfile
-
-    # Handler for when the docker-compose.yml file changes (container must be recreated)
+    # Handler for when either the Caddyfile or docker-compose.yml file changes
+    # In both cases we fully restart the Caddy service so the new config is picked up.
     - name: Restart Caddy Service
       listen: "Restart Caddy Service"
       community.docker.docker_compose_v2:

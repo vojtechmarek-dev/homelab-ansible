@@ -46,7 +46,7 @@
 
     - name: Copy Docker Compose
       ansible.builtin.template:
-        src: templates/medialab.docker-compose.yml.j2
+        src: templates/mediarrlab/docker-compose.yml.j2
         dest: "{{ project_path }}/docker-compose.yml"
         mode: '0644'
       notify: Restart Media Stack

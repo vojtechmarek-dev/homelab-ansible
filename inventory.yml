@@ -1,4 +1,10 @@
 all:
+  # --- GLOBAL VARIABLES FOR AUTOMATION ---
+  vars:
+    # Tell Ansible to ALWAYS connect as this user
+    ansible_user: ansible-manager
+    ansible_ssh_private_key_file: ~/.ssh/ansible_manager_homelab_rsa
+
   children:
     # --- Infrastructure Groups ---
     proxmox_vms:
@@ -72,6 +78,7 @@ all:
       hosts:
         homelab-thinkcentre:
         homelab-pi:
+        kuzelovlab:
 
     lvm_storage_servers:
       hosts:

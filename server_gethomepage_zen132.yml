@@ -1,0 +1,51 @@
+---
+- name: Deploy Homepage Dashboard
+  hosts: kuzelovlab
+  become: yes
+
+  vars:
+    domain: zen132.cz
+    project_path: "/srv/homepage"
+    config_path: "{{ project_path }}/config"
+    images_path: "{{ project_path }}/images"
+
+  tasks:
+    - name: Ensure directories exist
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        mode: '0755'
+      loop:
+        - "{{ project_path }}"
+        - "{{ config_path }}"
+
+    - name: Copy Config Files
+      ansible.builtin.template:
+        src: "templates/homepage/{{ item }}.j2"
+        dest: "{{ config_path }}/{{ item }}"
+        mode: '0600'
+      loop:
+        - services.yaml
+        - settings.yaml
+        - bookmarks.yaml
+        - widgets.yaml
+      notify: Restart Homepage
+
+    - name: Copy Docker Compose
+      ansible.builtin.template:
+        src: templates/homepage/docker-compose.yml.j2
+        dest: "{{ project_path }}/docker-compose.yml"
+        mode: '0644'
+      notify: Restart Homepage
+
+    - name: Ensure Homepage is running
+      community.docker.docker_compose_v2:
+        project_src: "{{ project_path }}"
+        state: present
+
+  handlers:
+    - name: Restart Homepage
+      community.docker.docker_compose_v2:
+        project_src: "{{ project_path }}"
+        state: present
+        recreate: always
