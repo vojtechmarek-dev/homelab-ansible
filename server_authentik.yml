@@ -1,0 +1,42 @@
+---
+- name: Deploy Authentik Identity Provider
+  hosts: kuzelovlab
+  become: yes
+
+  vars:
+    project_path: "/srv/authentik"
+    config_path: "{{ project_path }}/config"
+    db_path: "{{ project_path }}/database"
+
+  tasks:
+    - name: Ensure Authentik directories exist
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        mode: '0755'
+      loop:
+        - "{{ project_path }}"
+        - "{{ config_path }}"
+        - "{{ config_path }}/media"
+        - "{{ config_path }}/certs"
+        - "{{ config_path }}/custom-templates"
+        - "{{ db_path }}"
+
+    - name: Copy Docker Compose template
+      ansible.builtin.template:
+        src: templates/authentik/docker-compose.yml.j2
+        dest: "{{ project_path }}/docker-compose.yml"
+        mode: '0644'
+      notify: Restart Authentik
+
+    - name: Ensure Authentik service is running
+      community.docker.docker_compose_v2:
+        project_src: "{{ project_path }}"
+        state: present
+
+  handlers:
+    - name: Restart Authentik
+      community.docker.docker_compose_v2:
+        project_src: "{{ project_path }}"
+        state: present
+        recreate: always

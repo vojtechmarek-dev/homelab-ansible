@@ -1,0 +1,41 @@
+---
+- name: Deploy Mealie Recipe Manager (Postgres)
+  hosts: kuzelovlab
+  become: yes
+
+  vars:
+    domain: zen132.cz
+    project_path: "/srv/mealie"
+    app_data_path: "{{ project_path }}/data"
+    # New directory for the database
+    db_path: "{{ project_path }}/db"
+
+  tasks:
+    - name: Ensure Mealie directories exist
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        mode: '0755'
+      loop:
+        - "{{ project_path }}"
+        - "{{ app_data_path }}"
+        - "{{ db_path }}"
+
+    - name: Copy Mealie Docker Compose
+      ansible.builtin.template:
+        src: templates/mealie/docker-compose.yml.j2
+        dest: "{{ project_path }}/docker-compose.yml"
+        mode: '0644'
+      notify: Restart Mealie
+
+    - name: Ensure Mealie is running
+      community.docker.docker_compose_v2:
+        project_src: "{{ project_path }}"
+        state: present
+
+  handlers:
+    - name: Restart Mealie
+      community.docker.docker_compose_v2:
+        project_src: "{{ project_path }}"
+        state: present
+        recreate: always

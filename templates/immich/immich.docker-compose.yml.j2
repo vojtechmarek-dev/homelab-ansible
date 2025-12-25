@@ -10,12 +10,17 @@ services:
       - /etc/localtime:/etc/localtime:ro
     env_file:
       - .env
+    environment:
+      - NODE_OPTIONS=--dns-result-order=ipv4first
     ports:
       # Standard Immich port
       - '2283:2283'
     depends_on:
       - redis
       - database
+    extra_hosts:
+    # CRITICAL: Add authentik host for integration
+      - "auth.zen132.cz:host-gateway"
     restart: always
     # CRITICAL: Add to the shared proxy network so Caddy can find it
     networks:

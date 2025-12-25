@@ -1,0 +1,37 @@
+---
+- name: Deploy Gotify Notification Server
+  hosts: kuzelovlab
+  become: yes
+
+  vars:
+    project_path: "/srv/gotify"
+    app_data_path: "{{ project_path }}/data"
+
+  tasks:
+    - name: Ensure Gotify directories exist
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        mode: '0755'
+      loop:
+        - "{{ project_path }}"
+        - "{{ app_data_path }}"
+
+    - name: Copy Gotify Docker Compose
+      ansible.builtin.template:
+        src: templates/gotify/docker-compose.yml.j2
+        dest: "{{ project_path }}/docker-compose.yml"
+        mode: '0644'
+      notify: Restart Gotify
+
+    - name: Ensure Gotify is running
+      community.docker.docker_compose_v2:
+        project_src: "{{ project_path }}"
+        state: present
+
+  handlers:
+    - name: Restart Gotify
+      community.docker.docker_compose_v2:
+        project_src: "{{ project_path }}"
+        state: present
+        recreate: always

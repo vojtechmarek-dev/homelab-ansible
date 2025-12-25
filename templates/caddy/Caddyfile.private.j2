@@ -145,3 +145,24 @@ https://tochcu.{{ domain }} {
     }
     reverse_proxy 192.168.0.30:5055
 }
+
+https://notify.{{ domain }} {
+    tls {
+        dns cloudflare {env.CLOUDFLARE_API_TOKEN}
+    }
+    reverse_proxy gotify:80
+}
+
+https://auth.{{ domain }} {
+    tls {
+        dns cloudflare {env.CLOUDFLARE_API_TOKEN}
+    }
+    reverse_proxy server:9000
+}
+
+https://kucharka.{{ domain }} {
+    tls {
+        dns cloudflare {env.CLOUDFLARE_API_TOKEN}
+    }
+    reverse_proxy mealie:9000
+}

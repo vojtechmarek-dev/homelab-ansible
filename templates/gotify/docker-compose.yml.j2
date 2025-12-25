@@ -1,0 +1,19 @@
+services:
+  gotify:
+    image: gotify/server
+    container_name: gotify
+    restart: unless-stopped
+    ports:
+      - "8085:80" # Mapping to 8085 because 8080 is taken by Stirling PDF
+    environment:
+      - GOTIFY_DEFAULTUSER_PASS={{ secrets.gotify_admin_password }}
+      - TZ=Europe/Prague
+      - GOTIFY_REGISTRATION=false 
+    volumes:
+      - "{{ app_data_path }}:/app/data"
+    networks:
+      - proxy
+
+networks:
+  proxy:
+    external: true

@@ -227,7 +227,30 @@ Tell Caddy how to route traffic to the new service.
     }
     ```
 
-## Step 6: Deploy and Verify
+## Step 6: Set domain deploy and Verify
+
+In your provider either: 
+### Create a new CNAME of the desired domain cname 
+For cloudflare go to domain settings under DNS-Records-Add Record 
+Type: CNAME
+Name: jellyfin
+Content: placeholderjellyfin (must be unique)
+Proxy Status: disabled -> DNS only
+TTL: auto
+
+### Add the domain as tunnelled dns record 
+For Cloudflare OneDash - Networks - Manage Tunnels - Go to your tunnel management / edit - Published application routes - Add new
+subdomain: jellyfin 
+domain: select yours
+service: HTTPS
+URL: caddy:443 (this will redirect all your tunneled networking to caddy to handle proxying requests)
+Additional Settings: 
+TLS 
+- Origin Server Name must be full domain url: jellyfin.vojtechmarek.dev
+- No TLS Verify - enabled
+HTTP settings 
+- HTTP Host Header : jelyyfin.vojtechmarek.dev
+
 
 Run the Ansible playbooks to apply all your changes.
 

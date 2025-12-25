@@ -1,0 +1,57 @@
+services:
+  mealie:
+    image: ghcr.io/mealie-recipes/mealie:latest
+    container_name: mealie
+    ports:
+      # Map host port 9925 to container port 9000
+      - "9925:9000"
+    deploy:
+      resources:
+        limits:
+          memory: 1000M
+    volumes:
+      - {{ app_data_path }}:/app/data/
+    environment:
+      - ALLOW_SIGNUP=true
+      - PUID=1000
+      - PGID=1000
+      - TZ=Europe/Prague
+      - BASE_URL=https://kucharka.{{ domain }}
+      
+      # Database Connection Details
+      - DB_ENGINE=postgres
+      - POSTGRES_USER=mealie
+      - POSTGRES_PASSWORD={{ secrets.mealie_db_password }}
+      - POSTGRES_SERVER=mealie-db # Matches service name below
+      - POSTGRES_PORT=5432
+      - POSTGRES_DB=mealie
+    depends_on:
+      mealie-db:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - mealie_internal
+      - proxy
+
+  mealie-db:
+    image: postgres:17
+    container_name: mealie-postgres
+    restart: unless-stopped
+    volumes:
+      - {{ db_path }}:/var/lib/postgresql/data
+    environment:
+      - POSTGRES_PASSWORD={{ secrets.mealie_db_password }}
+      - POSTGRES_USER=mealie
+      - POSTGRES_DB=mealie
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mealie"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - mealie_internal
+
+networks:
+  mealie_internal:
+  proxy:
+    external: true
