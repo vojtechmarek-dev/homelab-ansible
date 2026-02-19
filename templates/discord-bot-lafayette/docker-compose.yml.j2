@@ -1,6 +1,6 @@
 services:
   lafayette_bot:
-    image: ghcr.io/vojtechmarek-dev/discord-bot-lafayette:release
+    image: ghcr.io/vojtechmarek-dev/discord-bot-lafayette:{{ image_tag }}
     container_name: lafayette_bot
     restart: unless-stopped
     environment:

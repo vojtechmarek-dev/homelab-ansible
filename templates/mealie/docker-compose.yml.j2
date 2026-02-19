@@ -3,7 +3,6 @@ services:
     image: ghcr.io/mealie-recipes/mealie:latest
     container_name: mealie
     ports:
-      # Map host port 9925 to container port 9000
       - "9925:9000"
     deploy:
       resources:
@@ -12,19 +11,38 @@ services:
     volumes:
       - {{ app_data_path }}:/app/data/
     environment:
-      - ALLOW_SIGNUP=true
+      # --- Basic Settings ---
+      - ALLOW_SIGNUP=false # Disable open registration, rely on OIDC
+      - ALLOW_PASSWORD_LOGIN=false # Disable local password login, rely on OIDC
       - PUID=1000
       - PGID=1000
       - TZ=Europe/Prague
       - BASE_URL=https://kucharka.{{ domain }}
       
-      # Database Connection Details
+      # --- Database Settings ---
       - DB_ENGINE=postgres
       - POSTGRES_USER=mealie
       - POSTGRES_PASSWORD={{ secrets.mealie_db_password }}
       - POSTGRES_SERVER=mealie-db # Matches service name below
       - POSTGRES_PORT=5432
       - POSTGRES_DB=mealie
+
+      # --- OIDC Settings (Authentik) ---
+      - OIDC_AUTH_ENABLED=true
+      - OIDC_SIGNUP_ENABLED=true # Create users automatically if they login via Authentik
+      - OIDC_CONFIGURATION_URL=https://auth.{{ domain }}/application/o/mealie/.well-known/openid-configuration
+      - OIDC_CLIENT_ID={{ secrets.mealie_oidc_client_id }}
+      - OIDC_CLIENT_SECRET={{ secrets.mealie_oidc_client_secret }}
+      - OIDC_NAME=Authentik
+      - OIDC_USER_CLAIM=email # Map the email from Authentik to the user in Mealie
+      - OIDC_REMEMBER_ME=true 
+
+    # --- NETWORK FIX ---
+    # Force the container to resolve your auth domain to the Docker Host IP
+    # allowing it to reach Caddy -> Authentik internally.
+    extra_hosts:
+      - "auth.{{ domain }}:host-gateway"
+
     depends_on:
       mealie-db:
         condition: service_healthy

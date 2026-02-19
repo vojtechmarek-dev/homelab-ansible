@@ -14,19 +14,30 @@
     - Cloudflare Tunnel:
         icon: cloudflare.png
         href: https://one.dash.cloudflare.com/
-        description: Tunnely pro bezpečný přístup z venčí
+        description: Tunely pro bezpečný přístup z internetu
         container: cloudflared
         widget:
             type: cloudflared
             accountid: {{ secrets.cloudflared_accountid }} # from zero trust dashboard url e.g. https://one.dash.cloudflare.com/<accountid>/home/quick-start
             tunnelid: {{ secrets.cloudflared_tunnelid }} # found in tunnels dashboard under the tunnel name
             key: {{ secrets.cloudflared_tunnel_api_key }} # api token with `Account.Cloudflare Tunnel:Read` https://dash.cloudflare.com/profile/api-tokens
+    - Authentik:
+        icon: authentik
+        href: https://auth.{{ domain }}
+        description: Naše centrální správa uživatelů a SSO
+        container: authentik-server-1
+        fields: ["users", "loginsLast24H", "failedLoginsLast24H"]
+        widget:
+            type: authentik
+            url: http://server:9000
+            key: {{ secrets.authentik_api_key }}
+            version: 2
 
 - Náš Cloud a Data:
     - Immich:
         icon: immich
         href: https://fotky.{{ domain }}
-        description: Zálohování Fotek a Videa (dostupné zevnitř i z venčí)
+        description: Zálohování Fotek a Videí (dostupné z internetu)
         container: immich_server
         widget:
             type: immich
@@ -34,11 +45,21 @@
             key: {{ secrets.immich_stats_api_key }}
             fields: ["photos", "videos", "storage"]
             version: 2
-
+    - Mealie:
+        icon: mealie
+        href: https://kucharka.{{ domain }}
+        description: Naše Kuchařka (dostupné z internetu)
+        container: mealie
+        widget:
+            type: mealie
+            url: http://mealie:9000
+            key: {{ secrets.mealie_api_key }}
+            fields: ["recipes"]
+            version: 2
     - Home Assistant:
         icon: home-assistant
         href: https://struhadla.cz
-        description: Home assitant (moving soon)
+        description: Home assistant (moving soon)
         siteMonitor: https://struhadla.cz
 
     - Seafile:

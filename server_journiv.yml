@@ -1,0 +1,52 @@
+---
+- name: Deploy Journiv
+  hosts: homelab-thinkcentre
+  become: yes
+
+  vars:
+    # --- Variables ---
+    project_path: "/srv/journiv"
+    redis_path: "{{ project_path }}/redis"
+    app_path: "{{ project_path }}/app_data"
+
+
+  tasks:
+    - name: Ensure Journiv directories exist
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        mode: '0755'
+        owner: "1000"
+        group: "1000"
+      loop:
+        - "{{ project_path }}"
+        - "{{ redis_path }}"
+        - "{{ app_path }}"
+        - "{{ app_path }}/media"
+        - "{{ app_path }}/logs"
+
+    - name: Copy Journiv .env file
+      ansible.builtin.template:
+        src: templates/journiv/journiv.env.j2
+        dest: "{{ project_path }}/.env"
+        mode: '0644'
+      notify: Restart Journiv
+
+    - name: Copy Journiv Docker Compose
+      ansible.builtin.template:
+        src: templates/journiv/journiv.docker-compose.yml.j2
+        dest: "{{ project_path }}/docker-compose.yml"
+        mode: '0644'
+      notify: Restart Journiv
+
+    - name: Ensure Journiv is running
+      community.docker.docker_compose_v2:
+        project_src: "{{ project_path }}"
+        state: present
+
+  handlers:
+    - name: Restart Journiv
+      community.docker.docker_compose_v2:
+        project_src: "{{ project_path }}"
+        state: present
+        recreate: always

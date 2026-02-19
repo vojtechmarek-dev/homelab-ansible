@@ -11,6 +11,7 @@
     # node.js uid and gid
     container_user_uid: "1001"
     container_user_gid: "1001"
+    image_tag: "latest"
 
   tasks:
     - name: Login to GitHub Container Registry
@@ -42,7 +43,7 @@
 
     - name: Pull latest image
       docker_image:
-        name: ghcr.io/vojtechmarek-dev/discord-bot-lafayette:release
+        name: ghcr.io/vojtechmarek-dev/discord-bot-lafayette:{{ image_tag }}
         source: pull
         force_source: yes
 

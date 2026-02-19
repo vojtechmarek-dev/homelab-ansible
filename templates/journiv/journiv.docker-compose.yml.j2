@@ -1,0 +1,105 @@
+# Journiv Production Docker Compose (SQLite)
+# Recommended for single-user or small deployments.
+
+services:
+  redis:
+    image: redis:7
+    container_name: journiv-redis-cache
+    restart: unless-stopped
+    volumes:
+      - ${REDIS_DATA_LOCATION}:/data
+    networks:
+      - backend
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  celery-worker:
+    image: swalabtech/journiv-app:${APP_VERSION:-latest}
+    container_name: journiv-celery-worker
+    command: celery -A app.core.celery_app worker --loglevel=info
+    env_file:
+      - .env
+    environment:
+      # Docker-specific: service names
+      - SERVICE_ROLE=celery-worker
+      - ENVIRONMENT=production
+      - REDIS_URL=redis://redis:6379/0
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+
+    volumes:
+      - ${APP_DATA_LOCATION}:/app/data
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - backend
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "celery -A app.core.celery_app inspect ping --timeout=5 | grep -q pong"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 40s
+    cpus: "1.0"
+    mem_limit: 1g
+    mem_reservation: 256m
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "5"
+
+  app:
+    image: swalabtech/journiv-app:${APP_VERSION:-latest}
+    container_name: journiv-sqlite-app
+    labels:
+      - "com.centurylinklabs.watchtower.enable=false" # Disable Watchtower updates for this container - it is in beta and update may break things
+    ports:
+      - "${APP_PORT:-8000}:8000" # Right side must remain 8000
+    env_file:
+      - .env
+    environment:
+      # Docker-specific: service names
+      - SERVICE_ROLE=app
+      - ENVIRONMENT=production
+      - REDIS_URL=redis://redis:6379/0
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      - RATE_LIMIT_STORAGE_URI=redis://redis:6379/1
+
+    volumes:
+      - ${APP_DATA_LOCATION}:/app/data
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - backend
+      - proxy # Connect to the external proxy network
+    restart: unless-stopped
+
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8000/api/v1/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+    cpus: "2.0"
+    mem_limit: 2g
+    mem_reservation: 512m
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "5"
+networks:
+  backend:
+    driver: bridge
+  # Define the external proxy network
+  proxy:
+    external: true

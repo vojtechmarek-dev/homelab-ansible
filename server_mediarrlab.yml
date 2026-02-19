@@ -11,6 +11,19 @@
     data_path: "/data"
 
   tasks:
+    # - name: Migrate Jellyseerr data directory to Seerr
+    #   ansible.builtin.shell:
+    #     cmd: mv /srv/medialab/config/jellyseerr /srv/medialab/config/seerr
+    #     creates: /srv/medialab/config/seerr # Only runs if 'seerr' folder doesn't exist
+    #     removes: /srv/medialab/config/jellyseerr # Only runs if 'jellyseerr' folder exists
+
+    - name: Ensure Seerr directory ownership
+      ansible.builtin.file:
+        path: "/srv/medialab/config/seerr"
+        state: directory
+        owner: "1000"
+        group: "1000"
+        recurse: yes
     - name: Ensure Config directory structure exists (SSD)
       ansible.builtin.file:
         path: "{{ item }}"
@@ -25,10 +38,12 @@
         - "{{ config_path }}/qbittorrent"
         - "{{ config_path }}/jellyfin"
         - "{{ config_path }}/bazarr"
-        - "{{ config_path }}/jellyseerr"
+        # - "{{ config_path }}/jellyseerr" (migrated to seerr, but keeping for reference)
+        - "{{ config_path }}/seerr" # For Seerr container (migrated from jellyseerr)
         - "{{ config_path }}/jellystat"
         - "{{ config_path }}/jellystat/data"       # DB data
         - "{{ config_path }}/jellystat/backup-data" # Backup data
+        - "{{ config_path }}/qbit_manage" # For qbit_manage container
 
     - name: Ensure Media directory structure exists (HDD)
       ansible.builtin.file:
@@ -40,9 +55,13 @@
       loop:
         - "{{ data_path }}"
         - "{{ data_path }}/torrents"
+        - "{{ data_path }}/torrents/.recycle_bin"
+        - "{{ data_path }}/torrents/.torrent_backups"
+        - "{{ data_path }}/torrents/.orphans"
         - "{{ data_path }}/media"
         - "{{ data_path }}/media/movies"
         - "{{ data_path }}/media/tv"
+        
 
     - name: Copy Docker Compose
       ansible.builtin.template:

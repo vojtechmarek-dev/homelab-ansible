@@ -42,7 +42,11 @@ all:
     caddy_servers:
       hosts:
         kuzelovlab:
+          caddy_template: "Caddyfile.kuzelovlab.private.j2"
+          domain: "zen132.cz"
         homelab-thinkcentre:
+          caddy_template: "Caddyfile.homelab.private.j2"
+          domain: "vojtechmarek.dev"
 
     discord_bot_servers:
       hosts:
