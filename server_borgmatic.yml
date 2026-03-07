@@ -1,0 +1,57 @@
+---
+- name: Deploy Containerized Borgmatic Backup
+  hosts: kuzelovlab
+  become: yes
+
+  vars:
+    project_path: "/srv/borgmatic"
+    # Tailscale IP of Remote ThinkCentre
+    remote_tailscale_ip: "100.77.72.37"
+
+  tasks:
+    - name: Ensure Borgmatic and Database Dump directories exist
+      ansible.builtin.file:
+        path: "{{ item.path }}"
+        state: directory
+        mode: "{{ item.mode }}"
+      loop:
+        - { path: "{{ project_path }}", mode: '0755' }
+        - { path: "{{ project_path }}/config", mode: '0755' }
+        - { path: "{{ project_path }}/ssh", mode: '0700' }   # Strict permissions for SSH folder
+        - { path: "{{ project_path }}/cache", mode: '0755' }
+        - { path: "/srv/database_dumps", mode: '0700' }      # Strict permissions for SQL dumps
+
+    - name: Deploy Borgmatic Configuration
+      ansible.builtin.template:
+        src: templates/borgmatic/borgmatic-config.yaml.j2
+        dest: "{{ project_path }}/config/config.yaml"
+        mode: '0600' # Contains secrets
+      notify: Restart Borgmatic
+    
+    - name: Deploy Crontab for Borgmatic schedule
+      ansible.builtin.copy:
+        dest: "{{ project_path }}/config/crontab.txt"
+        mode: '0644'
+        # This syntax runs the backup every day at 4:00 AM
+        content: |
+          0 4 * * * /usr/local/bin/borgmatic --verbosity -1 --syslog-verbosity 1
+      notify: Restart Borgmatic
+
+    - name: Deploy Borgmatic Docker Compose
+      ansible.builtin.template:
+        src: templates/borgmatic/borgmatic.docker-compose.yml.j2
+        dest: "{{ project_path }}/docker-compose.yml"
+        mode: '0644'
+      notify: Restart Borgmatic
+
+    - name: Ensure Borgmatic container is running
+      community.docker.docker_compose_v2:
+        project_src: "{{ project_path }}"
+        state: present
+
+  handlers:
+    - name: Restart Borgmatic
+      community.docker.docker_compose_v2:
+        project_src: "{{ project_path }}"
+        state: present
+        recreate: always

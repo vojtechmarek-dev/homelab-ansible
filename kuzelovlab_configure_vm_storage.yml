@@ -21,7 +21,7 @@
         pvs: "{{ data_disk }}"
         state: present
 
-    # --- Logical Volume for Nextcloud Data (/srv) ---
+    # --- Logical Volume for Data (/srv) ---
     - name: Create Logical Volume for /srv (Docker container Data)
       community.general.lvol:
         vg: "{{ vg_name }}"

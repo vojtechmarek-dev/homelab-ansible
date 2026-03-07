@@ -1,0 +1,35 @@
+---
+- name: Prepare Remote Server for Borg Backups
+  hosts: homelab-thinkcentre
+  become: yes
+
+  vars:
+    backup_user: "borg"
+    # The path where you remounted your 750GB volume
+    backup_base_path: "/mnt/remote_backups"
+    target_dir: "{{ backup_base_path }}/kuzelovlab"
+    auth_key: "{{ secrets.kuzelovlab_borg_public_key }}"
+
+  tasks:
+    - name: Create dedicated backup user
+      ansible.builtin.user:
+        name: "{{ backup_user }}"
+        shell: /bin/bash
+        create_home: yes
+        state: present
+        password_lock: yes
+
+    - name: Ensure the backup directory exists
+      ansible.builtin.file:
+        path: "{{ target_dir }}"
+        state: directory
+        owner: "{{ backup_user }}"
+        group: "{{ backup_user }}"
+        mode: '0700' # Strict permissions: Only borg user can access
+
+    - name: Authorize Kuzelovlab SSH Key
+      ansible.posix.authorized_key:
+        user: "{{ backup_user }}"
+        state: present
+        key: "{{ auth_key }}"
+        comment: "root@kuzelovlab-backup"

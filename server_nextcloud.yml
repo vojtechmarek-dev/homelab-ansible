@@ -42,6 +42,7 @@
 
     - name: Ensure Nextcloud stack is running
       community.docker.docker_compose_v2:
+        pull: always
         project_src: "{{ project_path }}"
         state: present
 

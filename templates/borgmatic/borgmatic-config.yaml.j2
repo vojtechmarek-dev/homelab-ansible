@@ -1,0 +1,56 @@
+# --- SOURCE & DESTINATION ---
+source_directories:
+    - /srv
+
+# The repositories option now expects a list of key/value pairs
+repositories:
+    - path: ssh://borg@{{ remote_tailscale_ip }}/mnt/remote_backups/kuzelovlab
+      label: remote
+
+exclude_patterns:
+    - '*.pyc'
+    - '/srv/**/cache/'
+    - '/srv/**/node_modules/'
+    - '/srv/immich/library/encoded-video/'
+    - '/srv/borgmatic/cache/'
+
+# --- STORAGE & ENCRYPTION ---
+encryption_passphrase: "{{ secrets.borgbackup_password }}"
+compression: auto,zstd
+ssh_command: ssh -o StrictHostKeyChecking=accept-new
+
+# --- RETENTION POLICY ---
+keep_daily: 7
+keep_weekly: 4
+keep_monthly: 6
+
+# --- HOOKS (Flattened) ---
+# We use 'before_backup' directly at the root level.
+
+commands:
+    - before: action
+      when:
+          - create
+      run:
+          - echo "Starting Database Dumps..."
+          - sh -c "docker exec authentik-postgresql-1 pg_dump -U authentik
+            authentik > /srv/database_dumps/authentik.sql"
+          - sh -c "docker exec mealie-postgres sh -c 'pg_dump -U \$POSTGRES_USER
+            \$POSTGRES_DB' > /srv/database_dumps/mealie.sql"
+          - sh -c "docker exec seafile-mysql sh -c 'mariadb-dump -u root
+            -p\$MYSQL_ROOT_PASSWORD --all-databases' >
+            /srv/database_dumps/seafile.sql"
+
+    - after: error
+      when:
+          - create
+          - prune
+          - compact
+          - check
+      run:
+          - echo "Backup Failed! Check the logs."
+
+healthchecks:
+    ping_url: "{{ secrets.kuzelovlab_borg_healtcheck_url }}"
+    states:
+        - finish

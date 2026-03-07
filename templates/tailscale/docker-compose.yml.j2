@@ -13,4 +13,5 @@ services:
       - TS_STATE_DIR=/var/lib/tailscale
       # Expose the subnet to the Tailscale network
       - TS_ROUTES={{ home_lan_subnet }}
+      - TS_USERSPACE=false
     restart: unless-stopped

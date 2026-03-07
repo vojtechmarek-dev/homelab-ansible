@@ -74,3 +74,50 @@
     name: ["man-db", "manpages"]
     state: present
   tags: ['packages']
+
+- name: Enable IPv4 forwarding (Required for Tailscale Subnet Routing)
+  ansible.posix.sysctl:
+    name: net.ipv4.ip_forward
+    value: '1'
+    sysctl_set: yes
+    state: present
+    reload: yes
+
+- name: Create Tailscale iptables script
+  ansible.builtin.copy:
+    dest: /usr/local/bin/tailscale-routing-fix.sh
+    mode: '0755'
+    content: |
+      #!/bin/bash
+      # Allow traffic to flow in and out of the Tailscale tunnel
+      iptables -I FORWARD -i tailscale0 -j ACCEPT
+      iptables -I FORWARD -o tailscale0 -j ACCEPT
+      
+      # IF you also needed the MASQUERADE command to make it work, uncomment the line below 
+      # and ensure 'ens18' matches your actual primary network interface!
+      # iptables -t nat -A POSTROUTING -o ens18 -j MASQUERADE
+
+- name: Create Systemd service for Tailscale routing
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/tailscale-routing-fix.service
+    mode: '0644'
+    content: |
+      [Unit]
+      Description=Tailscale Routing Firewall Rules
+      # Run this AFTER Docker starts so Docker doesn't overwrite our rules
+      After=network-online.target docker.service 
+
+      [Service]
+      Type=oneshot
+      ExecStart=/usr/local/bin/tailscale-routing-fix.sh
+      RemainAfterExit=true
+
+      [Install]
+      WantedBy=multi-user.target
+
+- name: Enable and start Tailscale routing service
+  ansible.builtin.systemd:
+    name: tailscale-routing-fix
+    enabled: yes
+    daemon_reload: yes
+    state: started
