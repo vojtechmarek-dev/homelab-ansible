@@ -5,13 +5,11 @@
 
   vars:
     borg_passphrase: "{{ secrets.borgbackup_password }}"
-    backup_repo_path: "/mnt/backups/borg-repo"
+    backup_repo_path: "/mnt/backup_tank/local_borg_repo"
     backup_script_path: "/usr/local/bin/run-backup.sh"
     borg_env_file: "/etc/borg_env"
     backup_sources:
       - /srv
-      - /etc
-      - /home
 
   tasks:
     - name: Install BorgBackup and FUSE support
@@ -62,4 +60,4 @@
         hour: "2"
         # The job command sources the environment file first to load the passphrase,
         # then executes the backup script.
-        job: ". {{ borg_env_file }} && {{ backup_script_path }}"
+        job: ". {{ borg_env_file }} && {{ backup_script_path }} >> /var/log/borg-backup.log 2>&1"

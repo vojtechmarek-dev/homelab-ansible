@@ -6,7 +6,7 @@
   vars:
     project_path: "/srv/authentik"
     config_path: "{{ project_path }}/config"
-    db_path: "{{ project_path }}/database"
+    db_path: "/srv_fast/authentik/database" # moved to fast NVMe storage for better performance
 
   tasks:
     - name: Ensure Authentik directories exist

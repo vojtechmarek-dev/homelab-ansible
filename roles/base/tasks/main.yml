@@ -92,6 +92,12 @@
       # Allow traffic to flow in and out of the Tailscale tunnel
       iptables -I FORWARD -i tailscale0 -j ACCEPT
       iptables -I FORWARD -o tailscale0 -j ACCEPT
+
+      # Fix physical MTU to prevent fragmentation
+      # /usr/sbin/ip link set eno1 mtu 1400
+
+      # Enable IP Forwarding
+      /usr/sbin/sysctl -w net.ipv4.ip_forward=1
       
       # IF you also needed the MASQUERADE command to make it work, uncomment the line below 
       # and ensure 'ens18' matches your actual primary network interface!

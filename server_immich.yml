@@ -6,7 +6,7 @@
   vars:
     # --- Variables ---
     project_path: "/srv/immich"
-    db_path: "{{ project_path }}/postgres"
+    db_path: "/srv_fast/immich/postgres" # moved to fast NVMe storage for better performance
     upload_location: "{{ project_path }}/library"
 
   tasks:

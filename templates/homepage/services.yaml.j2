@@ -32,7 +32,14 @@
             url: http://server:9000
             key: {{ secrets.authentik_api_key }}
             version: 2
-
+    - Borgmatic Healthcheck:
+        icon: healthchecks
+        description: Borg backup of Kuzelovlab to remote server
+        widget:
+            type: healthchecks
+            url: https://healthchecks.io/
+            key: {{ secrets.kuzelovlab_healthcheck_apikey }}
+            uuid: {{ secrets.kuzelovlab_borg_healthcheck_uuid }}
 - Náš Cloud a Data:
     - Immich:
         icon: immich

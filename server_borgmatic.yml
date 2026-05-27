@@ -1,12 +1,14 @@
 ---
 - name: Deploy Containerized Borgmatic Backup
-  hosts: kuzelovlab
+  hosts: borgmatic_servers
   become: yes
 
   vars:
     project_path: "/srv/borgmatic"
     # Tailscale IP of Remote ThinkCentre
-    remote_tailscale_ip: "100.77.72.37"
+    remote_tailscale_ip: "100.99.5.102"
+    # Path to the local Borg repository on the server (only for homelab-thinkcentre config, kuzelovlab uses remote repo over SSH)
+    local_backup_repo_path: "/mnt/backup_tank/local_borg_repo"
 
   tasks:
     - name: Ensure Borgmatic and Database Dump directories exist
@@ -21,9 +23,18 @@
         - { path: "{{ project_path }}/cache", mode: '0755' }
         - { path: "/srv/database_dumps", mode: '0700' }      # Strict permissions for SQL dumps
 
+
+    - name: Ensure local backup repository directory exists (ThinkCentre ONLY)
+      ansible.builtin.file:
+        path: "{{ local_backup_repo_path }}"
+        state: directory
+        mode: '0700'
+      # This task will be SKIPPED on kuzelovlab, and only run on homelab-thinkcentre
+      when: inventory_hostname == 'homelab-thinkcentre'
+
     - name: Deploy Borgmatic Configuration
       ansible.builtin.template:
-        src: templates/borgmatic/borgmatic-config.yaml.j2
+        src: templates/borgmatic/{{ borgmatic_config_template }}
         dest: "{{ project_path }}/config/config.yaml"
         mode: '0600' # Contains secrets
       notify: Restart Borgmatic
@@ -32,14 +43,14 @@
       ansible.builtin.copy:
         dest: "{{ project_path }}/config/crontab.txt"
         mode: '0644'
-        # This syntax runs the backup every day at 4:00 AM
+        # This syntax runs the backup every day at 4:00 AM # 5:00 AM on lenovo to avoid overlap with kuzelovlab's schedule
         content: |
-          0 4 * * * /usr/local/bin/borgmatic --verbosity -1 --syslog-verbosity 1
+          0 {{ borgmatic_cron_hour }} * * * /usr/local/bin/borgmatic --verbosity -1 --syslog-verbosity 1
       notify: Restart Borgmatic
 
     - name: Deploy Borgmatic Docker Compose
       ansible.builtin.template:
-        src: templates/borgmatic/borgmatic.docker-compose.yml.j2
+        src: templates/borgmatic/{{ borgmatic_docker_compose_template }}
         dest: "{{ project_path }}/docker-compose.yml"
         mode: '0644'
       notify: Restart Borgmatic

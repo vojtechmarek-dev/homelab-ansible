@@ -1,0 +1,47 @@
+# --- SOURCE & DESTINATION ---
+source_directories:
+    - /srv
+    - /etc
+
+repositories:
+    - path: {{ local_backup_repo_path }}
+      label: local_tank
+
+exclude_patterns:
+    - '*.pyc'
+    - '/srv/adguard-home/data/work'
+    - '/srv/borgmatic'
+
+# --- STORAGE & ENCRYPTION ---
+encryption_passphrase: "{{ secrets.borgbackup_password }}"
+compression: auto,zstd
+checkpoint_interval: 600
+
+# --- RETENTION POLICY ---
+keep_daily: 7
+keep_weekly: 4
+keep_monthly: 6
+
+# --- HOOKS (Flattened) ---
+# We use 'before_backup' directly at the root level.
+
+commands:
+    - before: action
+      when:
+          - create
+      run:
+          - echo "Starting Journiv DB Dump..."
+          - sh -c "docker exec -t journiv-postgres-db pg_dumpall -c -U journiv > /srv/database_dumps/journiv.sql"
+    - after: error
+      when:
+          - create
+          - prune
+          - compact
+          - check
+      run:
+          - echo "Backup Failed! Check the logs."
+
+healthchecks:
+    ping_url: "{{ secrets.healthcheck_borg_url }}"
+    states:
+        - finish

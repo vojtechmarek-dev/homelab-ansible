@@ -25,9 +25,8 @@ borg create \
     --filter AME \
     --compression lz4 \
     ::'backup-{now:%Y-%m-%d_%H-%M-%S}' \
-    {% for source in backup_sources %}
-    {{ source }} \
-    {% endfor %}
+    {{ backup_sources | join(' ') }}
+
 
 echo "Backup created successfully. Pruning old backups..."
 

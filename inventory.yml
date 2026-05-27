@@ -48,6 +48,17 @@ all:
           caddy_template: "Caddyfile.homelab.private.j2"
           domain: "vojtechmarek.dev"
 
+    borgmatic_servers:
+      hosts:
+        kuzelovlab:
+          borgmatic_config_template: "borgmatic-config.kuzelovlab.yaml.j2"
+          borgmatic_docker_compose_template: "borgmatic.kuzelovlab.docker-compose.yml.j2"
+          borgmatic_cron_hour: "4"
+        homelab-thinkcentre:
+          borgmatic_config_template: "borgmatic-config.homelab.yaml.j2"
+          borgmatic_docker_compose_template: "borgmatic.homelab.docker-compose.yml.j2"
+          borgmatic_cron_hour: "5" # Run backup at 5:00 AM on homelab-thinkcentre to avoid overlapping with kuzelovlab's 4:00 AM schedule
+
     discord_bot_servers:
       hosts:
         homelab-pi:

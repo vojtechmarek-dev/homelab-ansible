@@ -105,6 +105,9 @@ ansible-playbook -i inventory.yml -i ../ansible-secrets/secrets.yml server_user.
 2. **Run `server_user.yml` as root**.
 3. Verify that the user created in the previous playbook has sudo privileges.
 
+then run harden to have your server only accessible via ...
+then docker and tailscale, then the rest
+
 :warning: **Important**: After the initial setup, all subsequent playbook runs should be executed under the new user (root access will not be allowed). Use `--ask-vault-pass` for playbooks using Ansible Vault, and `--ask-become-pass` for those requiring sudo privileges.
 
 ## Roles Included

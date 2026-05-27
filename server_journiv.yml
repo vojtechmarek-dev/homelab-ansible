@@ -1,14 +1,16 @@
 ---
-- name: Deploy Journiv
+- name: Deploy Journiv (PostgreSQL)
   hosts: homelab-thinkcentre
   become: yes
 
   vars:
-    # --- Variables ---
+    domain: vojtechmarek.dev
+    app_port: "8003"
+    
     project_path: "/srv/journiv"
-    redis_path: "{{ project_path }}/redis"
-    app_path: "{{ project_path }}/app_data"
-
+    app_data_path: "{{ project_path }}/data"
+    db_path: "{{ project_path }}/postgres"
+    redis_path: "{{ project_path }}/valkey"
 
   tasks:
     - name: Ensure Journiv directories exist
@@ -20,12 +22,11 @@
         group: "1000"
       loop:
         - "{{ project_path }}"
+        - "{{ app_data_path }}"
+        - "{{ db_path }}"
         - "{{ redis_path }}"
-        - "{{ app_path }}"
-        - "{{ app_path }}/media"
-        - "{{ app_path }}/logs"
 
-    - name: Copy Journiv .env file
+    - name: Copy Journiv Environment File
       ansible.builtin.template:
         src: templates/journiv/journiv.env.j2
         dest: "{{ project_path }}/.env"

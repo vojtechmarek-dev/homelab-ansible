@@ -1,105 +1,186 @@
-# Journiv Production Docker Compose (SQLite)
-# Recommended for single-user or small deployments.
+x-base-env: &base-env
+  REDIS_URL: redis://valkey:6379/0
+  CELERY_BROKER_URL: redis://valkey:6379/0
+  CELERY_RESULT_BACKEND: redis://valkey:6379/0
+  DB_DRIVER: postgres
+  POSTGRES_HOST: postgres
+
+x-celery-common: &celery-common
+  image: swalabtech/journiv-app:${APP_VERSION:-latest}
+  env_file: .env
+  volumes:
+    # Use the absolute path provided by Ansible
+    - {{ app_data_path }}:/data
+  depends_on:
+    postgres:
+      condition: service_healthy
+    valkey:
+      condition: service_healthy
+  networks:
+    - backend
+  restart: unless-stopped
+  logging:
+    driver: "json-file"
+    options:
+      max-size: "50m"
+      max-file: "5"
+  deploy:
+    resources:
+      limits:
+        cpus: "1.0"
+        memory: 1g
+      reservations:
+        memory: 256m
+
+x-app-common: &app-common
+  image: swalabtech/journiv-app:${APP_VERSION:-latest}
+  env_file: .env
+  volumes:
+    - {{ app_data_path }}:/data
+  depends_on:
+    postgres:
+      condition: service_healthy
+    valkey:
+      condition: service_healthy
+  networks:
+    - backend
+  restart: unless-stopped
+  logging:
+    driver: "json-file"
+    options:
+      max-size: "50m"
+      max-file: "5"
+
+x-celery-healthcheck: &celery-healthcheck
+  interval: 30s
+  timeout: 10s
+  retries: 5
+  start_period: 40s
 
 services:
-  redis:
-    image: redis:7
-    container_name: journiv-redis-cache
+  postgres:
+    image: postgres:16-alpine # Using alpine for smaller footprint, 16 is very stable
+    container_name: journiv-postgres-db
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER:-journiv}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=${POSTGRES_DB:-journiv_prod}
+    volumes:
+      - {{ db_path }}:/var/lib/postgresql/data
+    networks:
+      - backend
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 1g
+        reservations:
+          memory: 256m
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "5"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-journiv} -d ${POSTGRES_DB:-journiv_prod}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  valkey:
+    image: valkey/valkey:8-alpine
+    container_name: journiv-valkey-cache
     restart: unless-stopped
     volumes:
-      - ${REDIS_DATA_LOCATION}:/data
+      - {{ redis_path }}:/data
     networks:
       - backend
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD", "valkey-cli", "ping"]
       interval: 10s
       timeout: 5s
       retries: 5
       start_period: 10s
 
   celery-worker:
-    image: swalabtech/journiv-app:${APP_VERSION:-latest}
+    <<: *celery-common
     container_name: journiv-celery-worker
-    command: celery -A app.core.celery_app worker --loglevel=info
-    env_file:
-      - .env
+    command: >
+      celery -A app.core.celery_app worker
+      --loglevel=info
+      --concurrency=${CELERY_WORKER_CONCURRENCY:-1}
+      --max-memory-per-child=${CELERY_WORKER_MAX_MEMORY_PER_CHILD_KB:-300000}
+      --max-tasks-per-child=${CELERY_WORKER_MAX_TASKS_PER_CHILD:-200}
     environment:
-      # Docker-specific: service names
-      - SERVICE_ROLE=celery-worker
-      - ENVIRONMENT=production
-      - REDIS_URL=redis://redis:6379/0
-      - CELERY_BROKER_URL=redis://redis:6379/0
-      - CELERY_RESULT_BACKEND=redis://redis:6379/0
-
-    volumes:
-      - ${APP_DATA_LOCATION}:/app/data
-    depends_on:
-      redis:
-        condition: service_healthy
-    networks:
-      - backend
-    restart: unless-stopped
+      <<: *base-env
+      SERVICE_ROLE: celery-worker
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     healthcheck:
-      test: ["CMD-SHELL", "celery -A app.core.celery_app inspect ping --timeout=5 | grep -q pong"]
-      interval: 30s
-      timeout: 10s
-      retries: 5
-      start_period: 40s
-    cpus: "1.0"
-    mem_limit: 1g
-    mem_reservation: 256m
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "50m"
-        max-file: "5"
+      <<: *celery-healthcheck
+
+  celery-beat:
+    <<: *celery-common
+    container_name: journiv-celery-beat
+    command: celery -A app.core.celery_app beat --loglevel=info --scheduler redbeat.RedBeatScheduler --pidfile=/tmp/celerybeat.pid
+    environment:
+      <<: *base-env
+      SERVICE_ROLE: celery-beat
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      REDBEAT_REDIS_URL: redis://valkey:6379/2
+    healthcheck:
+      <<: *celery-healthcheck
 
   app:
-    image: swalabtech/journiv-app:${APP_VERSION:-latest}
-    container_name: journiv-sqlite-app
-    labels:
-      - "com.centurylinklabs.watchtower.enable=false" # Disable Watchtower updates for this container - it is in beta and update may break things
+    <<: *app-common
+    container_name: journiv-postgres-app
     ports:
-      - "${APP_PORT:-8000}:8000" # Right side must remain 8000
-    env_file:
-      - .env
+      - "${APP_PORT:-8000}:8000"
     environment:
-      # Docker-specific: service names
-      - SERVICE_ROLE=app
-      - ENVIRONMENT=production
-      - REDIS_URL=redis://redis:6379/0
-      - CELERY_BROKER_URL=redis://redis:6379/0
-      - CELERY_RESULT_BACKEND=redis://redis:6379/0
-      - RATE_LIMIT_STORAGE_URI=redis://redis:6379/1
-
-    volumes:
-      - ${APP_DATA_LOCATION}:/app/data
-    depends_on:
-      redis:
-        condition: service_healthy
+      <<: *base-env
+      SERVICE_ROLE: app
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      ENVIRONMENT: production
+      RATE_LIMIT_STORAGE_URI: redis://valkey:6379/1
     networks:
       - backend
-      - proxy # Connect to the external proxy network
-    restart: unless-stopped
-
+      # CRITICAL: Connect to the proxy network so Caddy can route traffic here
+      - proxy
     healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:8000/api/v1/health"]
+      test: ["CMD-SHELL", "curl -f http://localhost:8000/api/v1/health || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 40s
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 2g
+        reservations:
+          memory: 512m
 
-    cpus: "2.0"
-    mem_limit: 2g
-    mem_reservation: 512m
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "50m"
-        max-file: "5"
+  admin-cli:
+    <<: *app-common
+    container_name: journiv-admin-cli
+    profiles: ["admin"]
+    command: ["sleep", "infinity"]
+    environment:
+      <<: *base-env
+      SERVICE_ROLE: admin-cli
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    healthcheck:
+      disable: true
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 1g
+        reservations:
+          memory: 256m
+
 networks:
   backend:
-    driver: bridge
-  # Define the external proxy network
   proxy:
     external: true

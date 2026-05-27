@@ -6,9 +6,7 @@
   vars:
     domain: zen132.cz
     project_path: "/srv/seafile"
-    
-    # Database goes on the standard /srv partition
-    db_path: "{{ project_path }}/db"
+    db_path: "/srv_fast/seafile/db" # moved to fast NVMe storage for better performance
     
     # BULK DATA goes on the large partition (same physical disk in VM, but logical separation)
     # We put it in a folder separate from 'public' so Samba users can't mess with it

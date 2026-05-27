@@ -5,12 +5,18 @@
 
   vars:
     backup_user: "borg"
-    # The path where you remounted your 750GB volume
-    backup_base_path: "/mnt/remote_backups"
+    backup_base_path: "/mnt/backup_tank"
     target_dir: "{{ backup_base_path }}/kuzelovlab"
     auth_key: "{{ secrets.kuzelovlab_borg_public_key }}"
 
   tasks:
+    - name: Install BorgBackup and FUSE support
+      ansible.builtin.apt:
+        name:
+          - borgbackup
+          - python3-fusepy # Provides 'pyfuse3' for the 'borg mount' feature
+        state: present
+        update_cache: yes
     - name: Create dedicated backup user
       ansible.builtin.user:
         name: "{{ backup_user }}"

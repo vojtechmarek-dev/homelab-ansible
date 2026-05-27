@@ -51,7 +51,9 @@ services:
       - TORRENTING_PORT={{ secrets.vpn_firewall_vpn_input_ports }}
     volumes:
       - /srv/medialab/config/qbittorrent:/config
+      # finished downloads go to media, but active torrents and incomplete downloads stay on the SSD cache for better performance
       - /data/torrents:/data/torrents
+      - /mnt/ssd_cache:/data/torrents/incomplete
     depends_on:
       gluetun:
         condition: service_healthy

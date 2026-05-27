@@ -17,20 +17,6 @@ https://pdf.{{ domain }} {
     reverse_proxy stirling-pdf:8080
 }
 
-
-https://nextcloud.{{ domain }} {
-    # This block is for service discovery for calendar/contacts clients
-    redir /.well-known/carddav /remote.php/dav/ permanent
-    redir /.well-known/caldav /remote.php/dav/ permanent
-
-    tls {
-        dns cloudflare {env.CLOUDFLARE_API_TOKEN}
-    }
-
-    # The reverse_proxy directive
-    reverse_proxy nextcloud-app:80
-}
-
 https://adguardhome.{{ domain }} {
     tls {
         dns cloudflare {env.CLOUDFLARE_API_TOKEN}
@@ -44,5 +30,5 @@ https://journiv.{{ domain }} {
     tls {
         dns cloudflare {env.CLOUDFLARE_API_TOKEN}
     }
-    reverse_proxy journiv-sqlite-app:8000
+    reverse_proxy journiv-postgres-app:8000
 }

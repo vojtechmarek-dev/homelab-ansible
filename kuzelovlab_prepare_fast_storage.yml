@@ -1,0 +1,30 @@
+---
+- name: Prepare Fast NVMe Storage for Databases
+  hosts: kuzelovlab
+  become: yes
+
+  vars:
+    # Check 'lsblk' on the VM to verify this is the new 100GB disk!
+    fast_disk: "/dev/sda"
+    mount_point: "/srv_fast"
+
+  tasks:
+    - name: Create ext4 filesystem on the NVMe disk
+      community.general.filesystem:
+        fstype: ext4
+        dev: "{{ fast_disk }}"
+        opts: "-L FAST_TANK"
+
+    - name: Ensure mount point directory exists
+      ansible.builtin.file:
+        path: "{{ mount_point }}"
+        state: directory
+        mode: '0755'
+
+    - name: Mount the NVMe disk
+      ansible.posix.mount:
+        path: "{{ mount_point }}"
+        src: "LABEL=FAST_TANK"
+        fstype: ext4
+        state: mounted
+        opts: defaults,noatime,nofail

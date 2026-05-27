@@ -8,7 +8,7 @@
     project_path: "/srv/mealie"
     app_data_path: "{{ project_path }}/data"
     # New directory for the database
-    db_path: "{{ project_path }}/db"
+    db_path: "/srv_fast/mealie/db" # moved to fast NVMe storage for better performance
 
   tasks:
     - name: Ensure Mealie directories exist

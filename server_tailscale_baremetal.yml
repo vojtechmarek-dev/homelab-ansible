@@ -1,0 +1,26 @@
+- name: Install Tailscale on Bare Metal
+  hosts: homelab-thinkcentre
+  become: yes
+  tasks:
+    - name: Download and run Tailscale install script
+      ansible.builtin.shell:
+        cmd: curl -fsSL https://tailscale.com/install.sh | sh
+        creates: /usr/bin/tailscale
+
+    - name: Enable IPv4 Forwarding
+      ansible.posix.sysctl:
+        name: net.ipv4.ip_forward
+        value: '1'
+        sysctl_set: yes
+        state: present
+        reload: yes
+
+    - name: Ensure ethtool is installed
+      ansible.builtin.apt:
+        name: ethtool
+        state: present
+
+    - name: Apply UDP GRO optimization
+      ansible.builtin.shell:
+        cmd: ethtool -K eno1 rx-udp-gro-forwarding on rx-gro-list off
+      changed_when: false
