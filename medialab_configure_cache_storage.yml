@@ -31,3 +31,12 @@
         fstype: ext4
         state: mounted
         opts: defaults,noatime,nofail
+
+    - name: Ensure correct permissions on mounted SSD cache
+      ansible.builtin.file:
+        path: "{{ mount_point }}"
+        state: directory
+        owner: "1000"
+        group: "1000"
+        mode: '0775'
+        recurse: yes
