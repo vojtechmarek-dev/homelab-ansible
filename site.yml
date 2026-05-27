@@ -23,8 +23,7 @@
 - import_playbook: apps.yml
 
 # --- 4. Services with bespoke deploy logic ---
-- import_playbook: server_nextcloud.yml
-- import_playbook: server_mediarrlab.yml
-- import_playbook: server_gethomepage_zen132.yml
-- import_playbook: server_discord_bot_lafayette.yml
-- import_playbook: server_borgmatic.yml
+# - import_playbook: server_mediarrlab.yml
+# - import_playbook: server_gethomepage_zen132.yml
+# - import_playbook: server_discord_bot_lafayette.yml
+# - import_playbook: server_borgmatic.yml
