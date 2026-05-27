@@ -3,6 +3,14 @@
 
 This repository contains personal Ansible playbooks designed for setting up and managing a home server. These playbooks document each step to easily replicate the setup on managed new servers currently in use.
 
+## Documentation
+
+- **[INFRASTRUCTURE.md](INFRASTRUCTURE.md)** — the homelab handbook: system architecture
+  (dual-site topology, storage tiering, split-horizon DNS, 3-2-1 backups), a worked example
+  for deploying and publicly exposing a new service, and a maintenance/operations cheat sheet.
+- **This README** — repository layout, how to run the playbooks, and the day-to-day workflow
+  for adding services.
+
 ## Introduction to Ansible
 
 Ansible automates the management of remote systems, ensuring they maintain a desired state. While this README provides a basic overview, it is recommended to consult the [official Ansible documentation](https://docs.ansible.com/) for a more comprehensive understanding. 
@@ -178,175 +186,16 @@ The playbooks currently include the following roles:
 
 # Adding a New Service to the Homelab
 
-This document is the Standard Operating Procedure (SOP) for deploying a new containerized service to the host server. Following these steps ensures that the service is properly configured, networked, secured, and accessible.
+The full, current step-by-step procedure — covering local/public DNS, the Caddy
+site block, the `docker_stack` play, and exposing the service through the Cloudflare
+Tunnel — lives in **[INFRASTRUCTURE.md](INFRASTRUCTURE.md)**:
 
-## Prerequisites
+- **Section 3** — the concise 5-step recipe.
+- **Section 4** — a complete worked example (deploying and publicly exposing Uptime Kuma).
 
--   A working Ansible control machine with access to the server.
--   The service you want to deploy must be available as a Docker image.
--   Access to the Cloudflare, AdGuard Home, and Tailscale admin panels.
+For the quick "just add a compose app" pattern, see
+[The `docker_stack` role](#the-docker_stack-role) above.
 
----
-
-## Step 1: Planning & Variable Definition
-
-Before writing any code, define the key attributes of the new service.
-
--   **Service Name:** A short, lowercase name (e.g., `jellyfin`).
--   **Docker Image:** The full image name from Docker Hub (e.g., `jellyfin/jellyfin:latest`).
--   **Hostname:** The desired internal URL (e.g., `jellyfin.vojtechmarek.dev`).
--   **Internal Port:** The port the application listens on *inside* the container (e.g., `8096`).
--   **Persistent Data:** Identify which directories inside the container need to be saved. These will be mapped to `/srv/<service-name>/...` on the host.
-
-## Step 2: Public DNS Configuration (Cloudflare)
-
-This step makes the domain "real" so Caddy can get an SSL certificate for it.
-
--   [ ] Log in to the **Cloudflare Dashboard**.
--   [ ] Go to the DNS settings for `vojtechmarek.dev`.
--   [ ] Create a new **CNAME** record:
-    -   **Type:** `CNAME`
-    -   **Name:** The new service name (e.g., `jellyfin`).
-    -   **Content / Target:** `placeholder.vojtechmarek.dev` (your dummy hostname).
-    -   **Proxy status:** **DNS only (Grey Cloud)**. This is mandatory.
-
-## Step 3: Local & Remote DNS Configuration
-
-This step points your private networks to the server, keeping the service off the public internet.
-
--   [ ] **AdGuard Home (for LAN access):**
-    -   Log in to your AdGuard dashboard (`https://adguardhome.vojtechmarek.dev`).
-    -   Go to **Filters -> DNS Rewrites**.
-    -   Add a new rewrite:
-        -   **Domain:** `jellyfin.vojtechmarek.dev`
-        -   **Answer:** `192.168.0.146` (your server's local IP).
-
--   [ ] **Tailscale (for remote access):**
-    -   Log in to your Tailscale admin console.
-    -   Go to the **DNS** page.
-    -   Add a new MagicDNS entry:
-        -   **Name:** `jellyfin.vojtechmarek.dev`
-        -   **IP Address:** `homelab-thinkcentre` (your server's Tailscale name).
-
-## Step 4: Ansible Deployment Playbook
-
-Create the new Ansible playbook and associated template files for the service.
-
-1.  **Create the Docker Compose Template:**
-    -   Create a new file: `templates/<service-name>.docker-compose.yml.j2`.
-    -   Define the service, making sure to:
-        -   Use a `container_name`.
-        -   Set `restart: unless-stopped`.
-        -   Map all necessary persistent data volumes to `/srv/<service-name>/...` on the host.
-        -   **Do not** expose ports to the host unless absolutely necessary.
-        -   Connect the container to the shared `proxy` network.
-
-    ```yaml
-    # Example for templates/jellyfin.docker-compose.yml.j2
-    services:
-      jellyfin:
-        image: jellyfin/jellyfin:latest
-        container_name: jellyfin
-        restart: unless-stopped
-        volumes:
-          - "{{ app_config_path }}:/config"
-          - "{{ app_media_path }}:/media"
-        networks:
-          - proxy
-
-    networks:
-      proxy:
-        external: true
-    ```
-
-2.  **Add a play to `apps.yml`** (for a standard compose app — no separate playbook needed):
-    -   Append a play targeting the host/group, using the `docker_stack` role:
-
-    ```yaml
-    - name: Deploy Jellyfin
-      hosts: medialab
-      become: true
-      vars:
-        stack_name: jellyfin
-        stack_path: /srv/jellyfin
-        stack_compose_template: jellyfin/docker-compose.yml.j2
-        stack_extra_dirs:
-          - /srv/jellyfin/config
-        # any vars the template references (paths, domain, secrets.*) go here too
-        app_config_path: /srv/jellyfin/config
-      roles:
-        - docker_stack
-    ```
-
-    -   `docker_stack` handles directory creation, env/compose templating, `docker compose up`,
-        and the restart-on-change handler. Optional vars: `stack_env_template`, `stack_pull`,
-        `stack_dir_owner`/`stack_dir_group`, `stack_dir_mode`, `stack_env_mode`.
-    -   Only create a dedicated `server_<name>.yml` when the service needs logic the role
-        doesn't cover (image builds, post-deploy `exec`, cron, etc.) — e.g. `server_caddy.yml`,
-        `server_nextcloud.yml`.
-
-## Step 5: Configure the Reverse Proxy (Caddy)
-
-Tell Caddy how to route traffic to the new service.
-
--   [ ] Open the Caddyfile template: `templates/Caddyfile.public.j2`.
--   [ ] Add a new site block for the service:
-
-    ```
-    # In templates/Caddyfile.public.j2
-
-    https://jellyfin.vojtechmarek.dev {
-        tls {
-            dns cloudflare {env.CLOUDFLARE_API_TOKEN}
-        }
-        # Proxy to the new container on its internal port
-        reverse_proxy jellyfin:8096
-    }
-    ```
-
-## Step 6: Set domain deploy and Verify
-
-In your provider either: 
-### Create a new CNAME of the desired domain cname 
-For cloudflare go to domain settings under DNS-Records-Add Record 
-Type: CNAME
-Name: jellyfin
-Content: placeholderjellyfin (must be unique)
-Proxy Status: disabled -> DNS only
-TTL: auto
-
-### Add the domain as tunnelled dns record 
-For Cloudflare OneDash - Networks - Manage Tunnels - Go to your tunnel management / edit - Published application routes - Add new
-subdomain: jellyfin 
-domain: select yours
-service: HTTPS
-URL: caddy:443 (this will redirect all your tunneled networking to caddy to handle proxying requests)
-Additional Settings: 
-TLS 
-- Origin Server Name must be full domain url: jellyfin.vojtechmarek.dev
-- No TLS Verify - enabled
-HTTP settings 
-- HTTP Host Header : jelyyfin.vojtechmarek.dev
-
-
-Run the Ansible playbooks to apply all your changes.
-
-1.  **Run the new service playbook:**
-    ```bash
-    ansible-playbook -i inventory.ini deploy_jellyfin.yml --user xmarek -K
-    ```
-2.  **Run the Caddy playbook** to update its configuration:
-    ```bash
-    ansible-playbook -i inventory.ini deploy_caddy.yml --user xmarek -K
-    ```
-3.  **Verify DNS on your client machine:**
-    -   Flush your DNS cache (`ipconfig /flushdns` on Windows).
-    -   Run `ping jellyfin.vojtechmarek.dev`. It should resolve to `192.168.0.146`.
-4.  **Access the service:**
-    -   Open your browser and navigate to `https://jellyfin.vojtechmarek.dev`.
-    -   You should see the service's setup page or main interface with a valid SSL certificate.
-
----
 
 ## Client-Side Troubleshooting Checklist
 
