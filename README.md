@@ -67,9 +67,24 @@ inventory.yml      # hosts + functional groups
 site.yml           # orchestrator: runs base config -> networking -> apps -> bespoke services
 apps.yml           # all simple docker-compose apps, one play each, via the docker_stack role
 server_*.yml       # bespoke playbooks for services/host-setup that need custom logic
-roles/             # base, user, docker, ssh_security, docker_stack
+provisioning/      # one-time, destructive host/disk setup (NOT run by site.yml)
+roles/             # base, user, docker, ssh_security, docker_stack + per-service roles
 templates/         # Jinja2 docker-compose / config templates, one dir per service
 ```
+
+### Provisioning vs. convergence
+
+`provisioning/` holds **one-time, destructive** disk/storage setup (partitioning, mkfs,
+LVM, mounts) — run by hand once when a host or disk is added, e.g.:
+
+```bash
+ansible-playbook provisioning/kuzelovlab-fast-storage.yml --ask-vault-pass -K
+```
+
+These are deliberately **excluded from `site.yml`**: re-running them is dangerous, and they
+describe initial state rather than the converged state `site.yml`/`apps.yml` maintain.
+(`server_tailscale_baremetal.yml` and `server_prepare_remote_borg_backup.yml` are similar
+host-bootstrap one-offs.)
 
 ### How to run
 
