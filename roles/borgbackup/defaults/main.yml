@@ -1,0 +1,7 @@
+---
+borg_passphrase: "{{ secrets.borgbackup_password }}"
+backup_repo_path: /mnt/backup_tank/local_borg_repo
+backup_script_path: /usr/local/bin/run-backup.sh
+borg_env_file: /etc/borg_env
+backup_sources:
+  - /srv

@@ -22,8 +22,7 @@
 # --- 3. Application stacks (generic docker_stack role) ---
 - import_playbook: apps.yml
 
-# --- 4. Services with bespoke deploy logic ---
-# - import_playbook: server_mediarrlab.yml
-# - import_playbook: server_gethomepage_zen132.yml
-# - import_playbook: server_discord_bot_lafayette.yml
+# --- 4. Services with bespoke deploy logic (uncomment to include) ---
+# - import_playbook: server_nextcloud.yml
 # - import_playbook: server_borgmatic.yml
+# - import_playbook: server_discord_bot_lafayette.yml

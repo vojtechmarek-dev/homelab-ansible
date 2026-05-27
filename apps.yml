@@ -197,3 +197,59 @@
     homepage_hostname: home.vojtechmarek.dev
   roles:
     - docker_stack
+
+- name: Deploy Homepage Dashboard (zen132.cz)
+  hosts: kuzelovlab
+  become: true
+  vars:
+    stack_name: homepage
+    stack_path: /srv/homepage
+    stack_compose_template: homepage/docker-compose.yml.j2
+    stack_extra_dirs:
+      - /srv/homepage/config
+    stack_config_files:
+      - { src: homepage/services.yaml.j2, dest: /srv/homepage/config/services.yaml, mode: "0600" }
+      - { src: homepage/settings.yaml.j2, dest: /srv/homepage/config/settings.yaml, mode: "0600" }
+      - { src: homepage/bookmarks.yaml.j2, dest: /srv/homepage/config/bookmarks.yaml, mode: "0600" }
+      - { src: homepage/widgets.yaml.j2, dest: /srv/homepage/config/widgets.yaml, mode: "0600" }
+    domain: zen132.cz
+    config_path: /srv/homepage/config
+    images_path: /srv/homepage/images
+  roles:
+    - docker_stack
+
+- name: Deploy Media Stack (arr + jellyfin)
+  hosts: medialab
+  become: true
+  vars:
+    stack_name: medialab
+    stack_path: /srv/medialab
+    stack_compose_template: mediarrlab/docker-compose.yml.j2
+    stack_extra_dirs:
+      - /srv/medialab/config
+      - /srv/medialab/config/prowlarr
+      - /srv/medialab/config/radarr
+      - /srv/medialab/config/sonarr
+      - /srv/medialab/config/qbittorrent
+      - /srv/medialab/config/jellyfin
+      - /srv/medialab/config/bazarr
+      - /srv/medialab/config/seerr
+      - /srv/medialab/config/jellystat
+      - /srv/medialab/config/jellystat/data
+      - /srv/medialab/config/jellystat/backup-data
+      - /srv/medialab/config/qbit_manage
+    stack_dirs:
+      # arr media data lives on the HDD, owned by the container UID
+      - { path: /srv/medialab/config/seerr, owner: "1000", group: "1000", recurse: true }
+      - { path: /data, owner: "1000", group: "1000", mode: "0775" }
+      - { path: /data/torrents, owner: "1000", group: "1000", mode: "0775" }
+      - { path: /data/torrents/.recycle_bin, owner: "1000", group: "1000", mode: "0775" }
+      - { path: /data/torrents/.torrent_backups, owner: "1000", group: "1000", mode: "0775" }
+      - { path: /data/torrents/.orphans, owner: "1000", group: "1000", mode: "0775" }
+      - { path: /data/media, owner: "1000", group: "1000", mode: "0775" }
+      - { path: /data/media/movies, owner: "1000", group: "1000", mode: "0775" }
+      - { path: /data/media/tv, owner: "1000", group: "1000", mode: "0775" }
+    config_path: /srv/medialab/config
+    data_path: /data
+  roles:
+    - docker_stack

@@ -8,12 +8,34 @@
     group: "{{ stack_dir_group | default(omit) }}"
   loop: "{{ [stack_path] + stack_extra_dirs }}"
 
+- name: "[{{ stack_name }}] Ensure per-directory paths exist"
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: directory
+    mode: "{{ item.mode | default(omit) }}"
+    owner: "{{ item.owner | default(omit) }}"
+    group: "{{ item.group | default(omit) }}"
+    recurse: "{{ item.recurse | default(omit) }}"
+  loop: "{{ stack_dirs }}"
+  loop_control:
+    label: "{{ item.path }}"
+
 - name: "[{{ stack_name }}] Render env file"
   ansible.builtin.template:
     src: "{{ stack_env_template }}"
     dest: "{{ stack_path }}/.env"
     mode: "{{ stack_env_mode }}"
   when: stack_env_template is defined
+  notify: restart stack
+
+- name: "[{{ stack_name }}] Render config files"
+  ansible.builtin.template:
+    src: "{{ item.src }}"
+    dest: "{{ item.dest }}"
+    mode: "{{ item.mode | default(stack_config_mode) }}"
+  loop: "{{ stack_config_files }}"
+  loop_control:
+    label: "{{ item.dest }}"
   notify: restart stack
 
 - name: "[{{ stack_name }}] Render docker-compose.yml"

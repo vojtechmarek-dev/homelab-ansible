@@ -1,0 +1,7 @@
+---
+project_path: /srv/nextcloud
+app_data_path: "{{ project_path }}/app"
+db_data_path: "{{ project_path }}/db"
+domain: vojtechmarek.dev
+nextcloud_db_root_password: "{{ secrets.nextcloud_db_root_password }}"
+nextcloud_db_password: "{{ secrets.nextcloud_db_password }}"

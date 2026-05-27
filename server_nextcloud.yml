@@ -1,0 +1,6 @@
+---
+- name: Deploy Nextcloud Stack
+  hosts: homelab-thinkcentre
+  become: true
+  roles:
+    - nextcloud

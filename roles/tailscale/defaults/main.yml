@@ -1,0 +1,4 @@
+---
+project_dir: /srv/tailscale
+state_dir: /srv/tailscale/state
+home_lan_subnet: "{{ secrets.tailscale_home_lan_subnet }}"

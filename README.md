@@ -156,6 +156,9 @@ The playbooks currently include the following roles:
 - **docker**: Configuration of Docker service including installing needed packages.
 - **ssh_security**: SSH hardening (used by `server_harden.yml`).
 - **docker_stack**: Generic docker-compose stack deployer used by every play in `apps.yml`.
+- **caddy / nextcloud / tailscale / borgbackup / borgmatic**: services with bespoke logic
+  (image builds, post-deploy `occ`, sysctl, cron) that the generic role can't cover; each
+  is driven by a thin `server_<name>.yml`.
 
 
 # Adding a New Service to the Homelab

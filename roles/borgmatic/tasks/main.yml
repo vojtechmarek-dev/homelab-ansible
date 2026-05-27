@@ -1,0 +1,46 @@
+---
+- name: Ensure Borgmatic and database-dump directories exist
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: directory
+    mode: "{{ item.mode }}"
+  loop:
+    - { path: "{{ project_path }}", mode: '0755' }
+    - { path: "{{ project_path }}/config", mode: '0755' }
+    - { path: "{{ project_path }}/ssh", mode: '0700' }
+    - { path: "{{ project_path }}/cache", mode: '0755' }
+    - { path: "/srv/database_dumps", mode: '0700' }
+
+- name: Ensure local backup repository directory exists (ThinkCentre ONLY)
+  ansible.builtin.file:
+    path: "{{ local_backup_repo_path }}"
+    state: directory
+    mode: '0700'
+  when: inventory_hostname == 'homelab-thinkcentre'
+
+- name: Deploy Borgmatic configuration
+  ansible.builtin.template:
+    src: "{{ borgmatic_config_template }}"
+    dest: "{{ project_path }}/config/config.yaml"
+    mode: '0600'
+  notify: Restart Borgmatic
+
+- name: Deploy crontab for the Borgmatic schedule
+  ansible.builtin.copy:
+    dest: "{{ project_path }}/config/crontab.txt"
+    mode: '0644'
+    content: |
+      0 {{ borgmatic_cron_hour }} * * * /usr/local/bin/borgmatic --verbosity -1 --syslog-verbosity 1
+  notify: Restart Borgmatic
+
+- name: Deploy Borgmatic docker-compose.yml
+  ansible.builtin.template:
+    src: "{{ borgmatic_docker_compose_template }}"
+    dest: "{{ project_path }}/docker-compose.yml"
+    mode: '0644'
+  notify: Restart Borgmatic
+
+- name: Ensure Borgmatic container is running
+  community.docker.docker_compose_v2:
+    project_src: "{{ project_path }}"
+    state: present
