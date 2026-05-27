@@ -1,0 +1,30 @@
+---
+# Top-level orchestrator. Runs the full configuration in a safe order.
+# Requires ANSIBLE_CONFIG to point at this repo's ansible.cfg (see README),
+# then:  ansible-playbook site.yml --ask-vault-pass -K
+#
+# NOTE: one-off / destructive provisioning is intentionally NOT imported here
+# (storage/LVM setup, bare-metal Tailscale install, remote-borg bootstrap).
+# Run those manually when provisioning a host — see the *_storage / *_baremetal
+# / server_prepare_* playbooks.
+
+# --- 1. Base system configuration ---
+- import_playbook: server_basic_config.yml
+- import_playbook: server_user.yml
+- import_playbook: server_harden.yml
+- import_playbook: server_docker.yml
+
+# --- 2. Networking / reverse proxy ---
+- import_playbook: server_tailscale.yml
+- import_playbook: server_caddy.yml
+- import_playbook: server_cloudflared.yml
+
+# --- 3. Application stacks (generic docker_stack role) ---
+- import_playbook: apps.yml
+
+# --- 4. Services with bespoke deploy logic ---
+- import_playbook: server_nextcloud.yml
+- import_playbook: server_mediarrlab.yml
+- import_playbook: server_gethomepage_zen132.yml
+- import_playbook: server_discord_bot_lafayette.yml
+- import_playbook: server_borgmatic.yml

@@ -1,0 +1,199 @@
+---
+# Docker application stacks, all driven by the generic `docker_stack` role.
+# Per-app config lives in each play's `vars:` (play-scoped — no cross-app
+# collision when several apps share a host like kuzelovlab).
+#
+# `stack_*` vars are consumed by the role. The remaining vars (project_path,
+# db_path, domain, secrets, ...) are referenced *inside* the compose/env
+# templates and are passed through unchanged so rendered output is identical
+# to the old per-app playbooks.
+#
+# Run everything:        ansible-playbook apps.yml --ask-vault-pass -K
+# Run one app:           ansible-playbook apps.yml --limit adguard_servers ...
+# (ANSIBLE_CONFIG must point at this repo's ansible.cfg — see README.)
+
+- name: Deploy AdGuard Home
+  hosts: adguard_servers
+  become: true
+  vars:
+    stack_name: adguard-home
+    stack_path: /srv/adguard-home
+    stack_compose_template: adguard-home/docker-compose.yml.j2
+    stack_pull: always
+    stack_recreate: auto
+    stack_extra_dirs:
+      - /srv/adguard-home/data
+      - /srv/adguard-home/data/work
+      - /srv/adguard-home/data/conf
+    app_data_path: /srv/adguard-home/data
+  roles:
+    - docker_stack
+
+- name: Deploy Authentik Identity Provider
+  hosts: kuzelovlab
+  become: true
+  vars:
+    stack_name: authentik
+    stack_path: /srv/authentik
+    stack_compose_template: authentik/docker-compose.yml.j2
+    stack_extra_dirs:
+      - /srv/authentik/config
+      - /srv/authentik/config/media
+      - /srv/authentik/config/certs
+      - /srv/authentik/config/custom-templates
+      - /srv_fast/authentik/database
+    config_path: /srv/authentik/config
+    db_path: /srv_fast/authentik/database
+  roles:
+    - docker_stack
+
+- name: Deploy Gotify Notification Server
+  hosts: kuzelovlab
+  become: true
+  vars:
+    stack_name: gotify
+    stack_path: /srv/gotify
+    stack_compose_template: gotify/docker-compose.yml.j2
+    stack_extra_dirs:
+      - /srv/gotify/data
+    app_data_path: /srv/gotify/data
+  roles:
+    - docker_stack
+
+- name: Deploy Immich
+  hosts: kuzelovlab
+  become: true
+  vars:
+    stack_name: immich
+    stack_path: /srv/immich
+    stack_compose_template: immich/immich.docker-compose.yml.j2
+    stack_env_template: immich/immich.env.j2
+    stack_env_mode: "0644"
+    stack_extra_dirs:
+      - /srv_fast/immich/postgres
+      - /srv/immich/library
+    db_path: /srv_fast/immich/postgres
+    upload_location: /srv/immich/library
+  roles:
+    - docker_stack
+
+- name: Deploy Journiv
+  hosts: homelab-thinkcentre
+  become: true
+  vars:
+    stack_name: journiv
+    stack_path: /srv/journiv
+    stack_compose_template: journiv/journiv.docker-compose.yml.j2
+    stack_env_template: journiv/journiv.env.j2
+    stack_env_mode: "0644"
+    stack_dir_owner: "1000"
+    stack_dir_group: "1000"
+    stack_extra_dirs:
+      - /srv/journiv/data
+      - /srv/journiv/postgres
+      - /srv/journiv/valkey
+    domain: vojtechmarek.dev
+    app_port: "8003"
+    app_data_path: /srv/journiv/data
+    db_path: /srv/journiv/postgres
+    redis_path: /srv/journiv/valkey
+  roles:
+    - docker_stack
+
+- name: Deploy Mealie Recipe Manager
+  hosts: kuzelovlab
+  become: true
+  vars:
+    stack_name: mealie
+    stack_path: /srv/mealie
+    stack_compose_template: mealie/docker-compose.yml.j2
+    stack_extra_dirs:
+      - /srv/mealie/data
+      - /srv_fast/mealie/db
+    domain: zen132.cz
+    app_data_path: /srv/mealie/data
+    db_path: /srv_fast/mealie/db
+  roles:
+    - docker_stack
+
+- name: Deploy Samba File Share
+  hosts: samba_servers
+  become: true
+  vars:
+    stack_name: samba
+    stack_path: /srv/samba
+    stack_compose_template: samba/docker-compose.yml.j2
+    stack_recreate: auto
+    stack_dir_mode: "0775"
+    stack_dir_group: users
+    stack_extra_dirs:
+      - /mnt/samba_share
+      - /mnt/samba_share/public
+    samba_share_path: /mnt/samba_share/public
+    samba_user: "{{ secrets.samba_user }}"
+    samba_password: "{{ secrets.samba_password }}"
+  roles:
+    - docker_stack
+
+- name: Deploy Seafile
+  hosts: kuzelovlab
+  become: true
+  vars:
+    stack_name: seafile
+    stack_path: /srv/seafile
+    stack_compose_template: seafile/seafile.docker-compose.yml.j2
+    stack_extra_dirs:
+      - /srv_fast/seafile/db
+      - /mnt/samba_share/seafile_data
+    domain: zen132.cz
+    db_path: /srv_fast/seafile/db
+    app_data_path: /mnt/samba_share/seafile_data
+  roles:
+    - docker_stack
+
+- name: Deploy Stirling PDF
+  hosts: stirling_pdf_servers
+  become: true
+  vars:
+    stack_name: stirling-pdf
+    stack_path: /srv/stirling-pdf
+    stack_compose_template: stirling-pdf/docker-compose.yml.j2
+    stack_pull: always
+    stack_recreate: auto
+    stack_extra_dirs:
+      - /srv/stirling-pdf/data/trainingData
+      - /srv/stirling-pdf/data/extraConfigs
+      - /srv/stirling-pdf/data/customFiles
+      - /srv/stirling-pdf/data/logs
+      - /srv/stirling-pdf/data/pipeline
+    app_name: stirling-pdf
+    app_port: "8080"
+    app_data_path: /srv/stirling-pdf/data
+  roles:
+    - docker_stack
+
+- name: Deploy Watchtower
+  hosts: tailscale_servers
+  become: true
+  vars:
+    stack_name: watchtower
+    stack_path: /srv/watchtower
+    stack_compose_template: watchtower/docker-compose.yml.j2
+  roles:
+    - docker_stack
+
+- name: Deploy Homepage Dashboard (vojtechmarek.dev)
+  hosts: homelab-thinkcentre
+  become: true
+  vars:
+    stack_name: homepage
+    stack_path: /srv/homepage
+    stack_compose_template: gethomepage/homepage.docker-compose.yml.j2
+    stack_recreate: auto
+    stack_extra_dirs:
+      - /srv/homepage/config
+    app_name: homepage
+    app_config_path: /srv/homepage/config
+    homepage_hostname: home.vojtechmarek.dev
+  roles:
+    - docker_stack

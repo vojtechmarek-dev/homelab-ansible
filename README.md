@@ -59,6 +59,41 @@ To avoid committing sensitive data like API keys or passwords to Git, this proje
 
 This approach ensures that our Git repository is secure, while deployments are automated and repeatable.
 
+## Repository Structure
+
+```
+ansible.cfg        # auto-loads inventory.yml + ../ansible-secrets/secrets.yml, sets roles_path
+inventory.yml      # hosts + functional groups
+site.yml           # orchestrator: runs base config -> networking -> apps -> bespoke services
+apps.yml           # all simple docker-compose apps, one play each, via the docker_stack role
+server_*.yml       # bespoke playbooks for services/host-setup that need custom logic
+roles/             # base, user, docker, ssh_security, docker_stack
+templates/         # Jinja2 docker-compose / config templates, one dir per service
+```
+
+### How to run
+
+`ansible.cfg` wires the inventory and secrets automatically, so no `-i` flags are needed.
+Because the repo may live on a world-writable filesystem (e.g. WSL `/mnt/d`), point Ansible
+at the config explicitly:
+
+```bash
+export ANSIBLE_CONFIG=$(pwd)/ansible.cfg     # add to ~/.bashrc to persist
+ansible-galaxy collection install -r requirements.yml
+
+ansible-playbook site.yml --ask-vault-pass -K          # everything, safe order
+ansible-playbook apps.yml --ask-vault-pass -K          # just the docker apps
+ansible-playbook apps.yml --limit immich --ask-vault-pass -K   # one app
+```
+
+Add `--check --diff` to preview rendered files without applying changes.
+
+### The `docker_stack` role
+
+Most apps follow the same pattern: make dirs -> render compose (+ optional env) ->
+`docker compose up` -> restart on change. That pattern lives once in `roles/docker_stack`.
+Each app is just a play in `apps.yml` supplying `stack_*` vars (and any vars its template
+references). See [Adding a New Service](#adding-a-new-service-to-the-homelab) below.
 
 ## Playbooks Overview
 
@@ -81,10 +116,12 @@ These playbooks deploy and manage specific services using Docker. They leverage 
 
 
 ### Running playbooks with secrets
-As stated before some playbooks require secrets variables and shold be run with Ansible Vault secrets:
+Secrets live in the external vaulted inventory `../ansible-secrets/secrets.yml`, which
+`ansible.cfg` loads automatically (see [How to run](#how-to-run)). Pass `--ask-vault-pass`
+to decrypt it:
 
 ```bash
-ansible-playbook -i inventory.yml -i ../ansible-secrets/secrets.yml server_user.yml --ask-vault-pass
+ansible-playbook server_user.yml --ask-vault-pass
 ```
 
 ### Playbook Execution Order
@@ -117,6 +154,8 @@ The playbooks currently include the following roles:
 - **base**: Basic configuration of a Linux Debian server.
 - **user**: Adding `ansible-manager` superuser to the server with ssh access to the server.
 - **docker**: Configuration of Docker service including installing needed packages.
+- **ssh_security**: SSH hardening (used by `server_harden.yml`).
+- **docker_stack**: Generic docker-compose stack deployer used by every play in `apps.yml`.
 
 
 # Adding a New Service to the Homelab
@@ -202,14 +241,31 @@ Create the new Ansible playbook and associated template files for the service.
         external: true
     ```
 
-2.  **Create the Main Playbook:**
-    -   Create a new file: `deploy_<service-name>.yml`.
-    -   Use the standard pattern:
-        -   Define variables for paths (`project_path`, `app_config_path`, etc.).
-        -   Create the necessary directories under `/srv/<service-name>/` with an `ansible.builtin.file` task.
-        -   Copy the `docker-compose.yml.j2` template to the server.
-        -   Run the `community.docker.docker_compose_v2` module.
-        -   Include a handler for restarting the service.
+2.  **Add a play to `apps.yml`** (for a standard compose app — no separate playbook needed):
+    -   Append a play targeting the host/group, using the `docker_stack` role:
+
+    ```yaml
+    - name: Deploy Jellyfin
+      hosts: medialab
+      become: true
+      vars:
+        stack_name: jellyfin
+        stack_path: /srv/jellyfin
+        stack_compose_template: jellyfin/docker-compose.yml.j2
+        stack_extra_dirs:
+          - /srv/jellyfin/config
+        # any vars the template references (paths, domain, secrets.*) go here too
+        app_config_path: /srv/jellyfin/config
+      roles:
+        - docker_stack
+    ```
+
+    -   `docker_stack` handles directory creation, env/compose templating, `docker compose up`,
+        and the restart-on-change handler. Optional vars: `stack_env_template`, `stack_pull`,
+        `stack_dir_owner`/`stack_dir_group`, `stack_dir_mode`, `stack_env_mode`.
+    -   Only create a dedicated `server_<name>.yml` when the service needs logic the role
+        doesn't cover (image builds, post-deploy `exec`, cron, etc.) — e.g. `server_caddy.yml`,
+        `server_nextcloud.yml`.
 
 ## Step 5: Configure the Reverse Proxy (Caddy)
 

@@ -1,0 +1,18 @@
+---
+# Generic docker-compose stack deployer.
+# Required per-stack vars (set in group_vars/<group>.yml):
+#   stack_name              short name, used for logging
+#   stack_path              project dir on the host, e.g. /srv/immich
+#   stack_compose_template  path (relative to a role/playbook templates dir) to compose .j2
+# Optional:
+#   stack_env_template      path to an env .j2 rendered to {{ stack_path }}/.env
+#   stack_extra_dirs        list of extra dirs to create (besides stack_path)
+#   stack_pull              compose pull policy: always | missing | never  (default: missing)
+#   stack_recreate          recreate policy on restart handler (default: always)
+
+stack_extra_dirs: []
+stack_pull: missing
+stack_recreate: always
+stack_dir_mode: "0755"
+stack_compose_mode: "0644"
+stack_env_mode: "0640"

@@ -1,0 +1,30 @@
+---
+- name: "[{{ stack_name }}] Ensure stack directories exist"
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    mode: "{{ stack_dir_mode }}"
+    owner: "{{ stack_dir_owner | default(omit) }}"
+    group: "{{ stack_dir_group | default(omit) }}"
+  loop: "{{ [stack_path] + stack_extra_dirs }}"
+
+- name: "[{{ stack_name }}] Render env file"
+  ansible.builtin.template:
+    src: "{{ stack_env_template }}"
+    dest: "{{ stack_path }}/.env"
+    mode: "{{ stack_env_mode }}"
+  when: stack_env_template is defined
+  notify: restart stack
+
+- name: "[{{ stack_name }}] Render docker-compose.yml"
+  ansible.builtin.template:
+    src: "{{ stack_compose_template }}"
+    dest: "{{ stack_path }}/docker-compose.yml"
+    mode: "{{ stack_compose_mode }}"
+  notify: restart stack
+
+- name: "[{{ stack_name }}] Ensure stack is running"
+  community.docker.docker_compose_v2:
+    project_src: "{{ stack_path }}"
+    pull: "{{ stack_pull }}"
+    state: present
