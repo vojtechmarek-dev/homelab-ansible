@@ -1,0 +1,5 @@
+---
+# kuzelovlab is the subnet router for its LAN — advertise it via Tailscale.
+# Other tailscale_servers hosts leave home_lan_subnet empty (role default)
+# so they join the tailnet without advertising any route.
+home_lan_subnet: "{{ secrets.tailscale_home_lan_subnet }}"

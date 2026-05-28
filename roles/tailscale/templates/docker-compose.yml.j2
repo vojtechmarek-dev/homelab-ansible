@@ -11,7 +11,9 @@ services:
     environment:
       # Store state in a mounted volume
       - TS_STATE_DIR=/var/lib/tailscale
-      # Expose the subnet to the Tailscale network
+{% if home_lan_subnet %}
+      # Expose the subnet to the Tailscale network (subnet router)
       - TS_ROUTES={{ home_lan_subnet }}
+{% endif %}
       - TS_USERSPACE=false
     restart: unless-stopped

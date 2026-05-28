@@ -46,6 +46,6 @@
       - ""
       - "  sudo docker exec -it tailscaled tailscale up"
       - ""
-      - "Then, go to the Tailscale Admin Console and approve the advertised subnet route ({{ home_lan_subnet }})."
+      - "{% if home_lan_subnet %}Then, go to the Tailscale Admin Console and approve the advertised subnet route ({{ home_lan_subnet }}).{% else %}Then approve the host in the Tailscale Admin Console (no subnet routes advertised by this node).{% endif %}"
       - "------------------------------------------------------------------"
   when: "'Logged out' in tailscale_status.stdout"
