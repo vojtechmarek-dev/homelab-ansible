@@ -1,4 +1,6 @@
 ---
+host_tailscale_ip: "100.124.191.123"
+
 # kuzelovlab is the subnet router for its LAN — advertise it via Tailscale.
 # Other tailscale_servers hosts leave home_lan_subnet empty (role default)
 # so they join the tailnet without advertising any route.

@@ -63,6 +63,12 @@ all:
       hosts:
         homelab-pi:
 
+    dockhand_servers:
+      hosts:
+        kuzelovlab:
+        medialab:
+        homelab-thinkcentre:
+
     homepage_servers:
       hosts:
         homelab-thinkcentre:
@@ -93,6 +99,7 @@ all:
         homelab-thinkcentre:
         homelab-pi:
         kuzelovlab:
+        medialab:
 
     lvm_storage_servers:
       hosts:
