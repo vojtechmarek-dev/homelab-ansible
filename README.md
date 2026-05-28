@@ -97,19 +97,46 @@ host-bootstrap one-offs.)
 ### How to run
 
 `ansible.cfg` wires the inventory and secrets automatically, so no `-i` flags are needed.
-Because the repo may live on a world-writable filesystem (e.g. WSL `/mnt/d`), point Ansible
-at the config explicitly:
+Because the repo may live on a world-writable filesystem (e.g. WSL `/mnt/d`), Ansible
+silently ignores `./ansible.cfg` unless `ANSIBLE_CONFIG` points at it explicitly.
+
+The repo ships a `.envrc` that exports `ANSIBLE_CONFIG` only inside this directory, via
+[**direnv**](https://direnv.net/) — recommended so the variable doesn't leak into other
+Ansible repos (e.g. a work one):
 
 ```bash
-export ANSIBLE_CONFIG=$(pwd)/ansible.cfg     # add to ~/.bashrc to persist
-ansible-galaxy collection install -r requirements.yml
+# one-time control-node setup
+sudo apt install -y direnv
+echo 'eval "$(direnv hook bash)"' >> ~/.bashrc
+source ~/.bashrc
 
-ansible-playbook site.yml --ask-vault-pass -K          # everything, safe order
-ansible-playbook apps.yml --ask-vault-pass -K          # just the docker apps
-ansible-playbook apps.yml --limit immich --ask-vault-pass -K   # one app
+cd /path/to/this/repo
+direnv allow .                                 # trust the .envrc
+ansible-galaxy collection install -r requirements.yml
+```
+
+After that, `cd` into the repo auto-exports `ANSIBLE_CONFIG`; `cd` out unsets it.
+
+```bash
+ansible-playbook site.yml --ask-vault-pass -K           # everything, safe order
+ansible-playbook apps.yml --ask-vault-pass -K           # just the docker apps
+ansible-playbook apps.yml --limit immich --ask-vault-pass -K   # one host group
+ansible-playbook apps.yml --tags homepage_zen132 --ask-vault-pass -K   # one tagged play
 ```
 
 Add `--check --diff` to preview rendered files without applying changes.
+
+**Without direnv** — export manually before each session (won't auto-unload):
+
+```bash
+export ANSIBLE_CONFIG=/absolute/path/to/repo/ansible.cfg
+```
+
+**Faster auth** — load the SSH key into the agent once to skip per-task passphrase prompts:
+
+```bash
+eval "$(ssh-agent -s)"; ssh-add ~/.ssh/ansible_manager_homelab_rsa
+```
 
 ### The `docker_stack` role
 

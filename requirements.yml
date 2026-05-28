@@ -1,5 +1,7 @@
 ---
 # Install with: ansible-galaxy collection install -r requirements.yml
 collections:
+  # 3.x supports ansible-core 2.13 (the max for Python 3.8) and still ships
+  # docker_compose_v2 (added in 3.4.0). 4.x requires ansible-core >= 2.15.
   - name: community.docker
-    version: ">=3.0.0"
+    version: ">=3.4.0,<4.0.0"
