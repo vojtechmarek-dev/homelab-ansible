@@ -1,0 +1,14 @@
+---
+# Experimental — not part of apps.yml / site.yml. Promote or delete after testing.
+- name: Experiment - Deploy Dockhand
+  hosts: homelab-pi
+  become: true
+  gather_facts: false
+  vars:
+    stack_name: dockhand
+    stack_path: /srv/dockhand
+    stack_compose_template: dockhand/docker-compose.yml.j2
+    stack_extra_dirs:
+      - /srv/dockhand/data
+  roles:
+    - docker_stack

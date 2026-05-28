@@ -166,3 +166,10 @@ https://kucharka.{{ domain }} {
     }
     reverse_proxy mealie:9000
 }
+
+https://uptime.{{ domain }} {
+    tls {
+        dns cloudflare {env.CLOUDFLARE_API_TOKEN}
+    }
+    reverse_proxy 192.168.0.45:3001
+}

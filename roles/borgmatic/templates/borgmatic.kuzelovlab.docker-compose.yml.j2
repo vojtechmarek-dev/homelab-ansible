@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   borgmatic:
     image: b3vis/borgmatic:latest
@@ -10,6 +8,8 @@ services:
     volumes:
       # 1. Mount the data you want to back up
       - /srv:/srv
+      - /srv_fast:/srv_fast
+      - /mnt/samba_share:/mnt/samba_share
       # 2. Mount the config, ssh keys, and cache
       - /srv/borgmatic/config:/etc/borgmatic.d
       - /srv/borgmatic/ssh:/root/.ssh
