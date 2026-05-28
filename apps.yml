@@ -15,6 +15,7 @@
 - name: Deploy AdGuard Home
   hosts: adguard_servers
   become: true
+  gather_facts: false
   vars:
     stack_name: adguard-home
     stack_path: /srv/adguard-home
@@ -32,6 +33,7 @@
 - name: Deploy Authentik Identity Provider
   hosts: kuzelovlab
   become: true
+  gather_facts: false
   vars:
     stack_name: authentik
     stack_path: /srv/authentik
@@ -50,6 +52,7 @@
 - name: Deploy Gotify Notification Server
   hosts: kuzelovlab
   become: true
+  gather_facts: false
   vars:
     stack_name: gotify
     stack_path: /srv/gotify
@@ -63,6 +66,7 @@
 - name: Deploy Immich
   hosts: kuzelovlab
   become: true
+  gather_facts: false
   vars:
     stack_name: immich
     stack_path: /srv/immich
@@ -80,6 +84,7 @@
 - name: Deploy Journiv
   hosts: homelab-thinkcentre
   become: true
+  gather_facts: false
   vars:
     stack_name: journiv
     stack_path: /srv/journiv
@@ -103,6 +108,7 @@
 - name: Deploy Mealie Recipe Manager
   hosts: kuzelovlab
   become: true
+  gather_facts: false
   vars:
     stack_name: mealie
     stack_path: /srv/mealie
@@ -119,6 +125,7 @@
 - name: Deploy Samba File Share
   hosts: samba_servers
   become: true
+  gather_facts: false
   vars:
     stack_name: samba
     stack_path: /srv/samba
@@ -138,6 +145,7 @@
 - name: Deploy Seafile
   hosts: kuzelovlab
   become: true
+  gather_facts: false
   vars:
     stack_name: seafile
     stack_path: /srv/seafile
@@ -154,6 +162,7 @@
 - name: Deploy Stirling PDF
   hosts: stirling_pdf_servers
   become: true
+  gather_facts: false
   vars:
     stack_name: stirling-pdf
     stack_path: /srv/stirling-pdf
@@ -175,6 +184,7 @@
 - name: Deploy Watchtower
   hosts: tailscale_servers
   become: true
+  gather_facts: false
   vars:
     stack_name: watchtower
     stack_path: /srv/watchtower
@@ -185,6 +195,7 @@
 - name: Deploy Homepage Dashboard (vojtechmarek.dev)
   hosts: homelab-thinkcentre
   become: true
+  gather_facts: false
   vars:
     stack_name: homepage
     stack_path: /srv/homepage
@@ -201,6 +212,8 @@
 - name: Deploy Homepage Dashboard (zen132.cz)
   hosts: kuzelovlab
   become: true
+  gather_facts: false
+  tags: homepage_zen132
   vars:
     stack_name: homepage
     stack_path: /srv/homepage
@@ -221,6 +234,7 @@
 - name: Deploy Media Stack (arr + jellyfin)
   hosts: medialab
   become: true
+  gather_facts: false
   vars:
     stack_name: medialab
     stack_path: /srv/medialab
