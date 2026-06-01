@@ -1,0 +1,8 @@
+---
+project_path: /srv/borgmatic
+# Tailscale IP of the remote ThinkCentre repository host
+remote_tailscale_ip: "100.99.5.102"
+# Local Borg repo path (only used on homelab-thinkcentre; kuzelovlab backs up remotely)
+local_backup_repo_path: /mnt/backup_tank/local_borg_repo
+# Per-host in inventory.yml: borgmatic_config_template,
+# borgmatic_docker_compose_template, borgmatic_cron_hour

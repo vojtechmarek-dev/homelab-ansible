@@ -1,0 +1,15 @@
+---
+# Experimental — NOT imported by site.yml / apps.yml. Promote into apps.yml
+# (or delete) once verified. See README "Experimental playbooks".
+- name: Experiment - Deploy Dockhand socket-proxy
+  hosts: dockhand_servers
+  become: true
+  gather_facts: false
+  vars:
+    stack_name: dockhand-proxy
+    stack_path: /srv/dockhand-proxy
+    stack_compose_template: dockhand/proxy.docker-compose.yml.j2
+    # host_tailscale_ip comes from host_vars/<host>.yml and is consumed
+    # directly by the compose template.
+  roles:
+    - docker_stack

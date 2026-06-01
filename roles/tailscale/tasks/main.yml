@@ -1,0 +1,51 @@
+---
+- name: Configure Host for IP Forwarding
+  ansible.posix.sysctl:
+    name: "{{ item.name }}"
+    value: "{{ item.value }}"
+    sysctl_file: /etc/sysctl.conf
+    reload: true
+  loop:
+    - { name: 'net.ipv4.ip_forward', value: '1' }
+    - { name: 'net.ipv6.conf.all.forwarding', value: '1' }
+  notify: Restart Tailscale container
+
+- name: Create Docker project directory
+  ansible.builtin.file:
+    path: "{{ project_dir }}"
+    state: directory
+    mode: '0755'
+
+- name: Render Tailscale docker-compose.yml
+  ansible.builtin.template:
+    src: docker-compose.yml.j2
+    dest: "{{ project_dir }}/docker-compose.yml"
+    mode: '0644'
+  notify: Restart Tailscale container
+
+- name: Deploy Tailscale with Docker Compose
+  community.docker.docker_compose_v2:
+    project_src: "{{ project_dir }}"
+    state: present
+    pull: always
+  register: compose_result
+
+- name: Check Tailscale authentication status
+  ansible.builtin.shell: "docker exec tailscaled tailscale status || true"
+  register: tailscale_status
+  changed_when: false
+
+- name: Display Final Instructions
+  ansible.builtin.debug:
+    msg:
+      - "------------------------------------------------------------------"
+      - "PLAYBOOK COMPLETE"
+      - ""
+      - "IF TAILSCALE IS NOT YET AUTHENTICATED:"
+      - "SSH into your server (ssh username@{{ ansible_host }}) and run the following command to log in:"
+      - ""
+      - "  sudo docker exec -it tailscaled tailscale up"
+      - ""
+      - "{% if home_lan_subnet %}Then, go to the Tailscale Admin Console and approve the advertised subnet route ({{ home_lan_subnet }}).{% else %}Then approve the host in the Tailscale Admin Console (no subnet routes advertised by this node).{% endif %}"
+      - "------------------------------------------------------------------"
+  when: "'Logged out' in tailscale_status.stdout"

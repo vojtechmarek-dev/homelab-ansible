@@ -3,6 +3,14 @@
 
 This repository contains personal Ansible playbooks designed for setting up and managing a home server. These playbooks document each step to easily replicate the setup on managed new servers currently in use.
 
+## Documentation
+
+- **[INFRASTRUCTURE.md](INFRASTRUCTURE.md)** — the homelab handbook: system architecture
+  (dual-site topology, storage tiering, split-horizon DNS, 3-2-1 backups), a worked example
+  for deploying and publicly exposing a new service, and a maintenance/operations cheat sheet.
+- **This README** — repository layout, how to run the playbooks, and the day-to-day workflow
+  for adding services.
+
 ## Introduction to Ansible
 
 Ansible automates the management of remote systems, ensuring they maintain a desired state. While this README provides a basic overview, it is recommended to consult the [official Ansible documentation](https://docs.ansible.com/) for a more comprehensive understanding. 
@@ -59,6 +67,83 @@ To avoid committing sensitive data like API keys or passwords to Git, this proje
 
 This approach ensures that our Git repository is secure, while deployments are automated and repeatable.
 
+## Repository Structure
+
+```
+ansible.cfg        # auto-loads inventory.yml + ../ansible-secrets/secrets.yml, sets roles_path
+inventory.yml      # hosts + functional groups
+site.yml           # orchestrator: runs base config -> networking -> apps -> bespoke services
+apps.yml           # all simple docker-compose apps, one play each, via the docker_stack role
+server_*.yml       # bespoke playbooks for services/host-setup that need custom logic
+provisioning/      # one-time, destructive host/disk setup (NOT run by site.yml)
+roles/             # base, user, docker, ssh_security, docker_stack + per-service roles
+templates/         # Jinja2 docker-compose / config templates, one dir per service
+```
+
+### Provisioning vs. convergence
+
+`provisioning/` holds **one-time, destructive** disk/storage setup (partitioning, mkfs,
+LVM, mounts) — run by hand once when a host or disk is added, e.g.:
+
+```bash
+ansible-playbook provisioning/kuzelovlab-fast-storage.yml --ask-vault-pass -K
+```
+
+These are deliberately **excluded from `site.yml`**: re-running them is dangerous, and they
+describe initial state rather than the converged state `site.yml`/`apps.yml` maintain.
+(`server_tailscale_baremetal.yml` and `server_prepare_remote_borg_backup.yml` are similar
+host-bootstrap one-offs.)
+
+### How to run
+
+`ansible.cfg` wires the inventory and secrets automatically, so no `-i` flags are needed.
+Because the repo may live on a world-writable filesystem (e.g. WSL `/mnt/d`), Ansible
+silently ignores `./ansible.cfg` unless `ANSIBLE_CONFIG` points at it explicitly.
+
+The repo ships a `.envrc` that exports `ANSIBLE_CONFIG` only inside this directory, via
+[**direnv**](https://direnv.net/) — recommended so the variable doesn't leak into other
+Ansible repos (e.g. a work one):
+
+```bash
+# one-time control-node setup
+sudo apt install -y direnv
+echo 'eval "$(direnv hook bash)"' >> ~/.bashrc
+source ~/.bashrc
+
+cd /path/to/this/repo
+direnv allow .                                 # trust the .envrc
+ansible-galaxy collection install -r requirements.yml
+```
+
+After that, `cd` into the repo auto-exports `ANSIBLE_CONFIG`; `cd` out unsets it.
+
+```bash
+ansible-playbook site.yml --ask-vault-pass -K           # everything, safe order
+ansible-playbook apps.yml --ask-vault-pass -K           # just the docker apps
+ansible-playbook apps.yml --limit immich --ask-vault-pass -K   # one host group
+ansible-playbook apps.yml --tags homepage_zen132 --ask-vault-pass -K   # one tagged play
+```
+
+Add `--check --diff` to preview rendered files without applying changes.
+
+**Without direnv** — export manually before each session (won't auto-unload):
+
+```bash
+export ANSIBLE_CONFIG=/absolute/path/to/repo/ansible.cfg
+```
+
+**Faster auth** — load the SSH key into the agent once to skip per-task passphrase prompts:
+
+```bash
+eval "$(ssh-agent -s)"; ssh-add ~/.ssh/ansible_manager_homelab_rsa
+```
+
+### The `docker_stack` role
+
+Most apps follow the same pattern: make dirs -> render compose (+ optional env) ->
+`docker compose up` -> restart on change. That pattern lives once in `roles/docker_stack`.
+Each app is just a play in `apps.yml` supplying `stack_*` vars (and any vars its template
+references). See [Adding a New Service](#adding-a-new-service-to-the-homelab) below.
 
 ## Playbooks Overview
 
@@ -81,11 +166,39 @@ These playbooks deploy and manage specific services using Docker. They leverage 
 
 
 ### Running playbooks with secrets
-As stated before some playbooks require secrets variables and shold be run with Ansible Vault secrets:
+Secrets live in the external vaulted inventory `../ansible-secrets/secrets.yml`, which
+`ansible.cfg` loads automatically (see [How to run](#how-to-run)). Pass `--ask-vault-pass`
+to decrypt it:
 
 ```bash
-ansible-playbook -i inventory.yml -i ../ansible-secrets/secrets.yml server_user.yml --ask-vault-pass
+ansible-playbook server_user.yml --ask-vault-pass
 ```
+
+### Tailscale preauth key
+
+The `tailscale` role consumes `secrets.tsauth_key` (preauth key) to register Docker-Tailscale
+hosts (`kuzelovlab`, `medialab`, `homelab-pi`) without a browser-based login. Generate
+it once in Tailscale admin (**Settings → Keys → Generate auth key**):
+
+- **Reusable** (same key serves all three hosts)
+- **Tagged** (e.g. `tag:server`) — avoids per-machine admin approval
+- **Expiry** 90 days for hygiene, or `never` for set-and-forget
+
+Add it to the vault file:
+
+```bash
+ansible-vault edit ../ansible-secrets/secrets.yml
+# add under all.vars.secrets:
+#   tsauth_key: tskey-auth-...
+```
+
+The key is only consumed on **first registration** (or when `/srv/tailscale/state` is
+wiped); once a host has a valid node identity, container recreates and VM reboots use the
+persisted state and ignore the key. With this set, deploying or reprovisioning a new
+Docker-Tailscale host is fully unattended — no browser click, no SIGTERM after 60s.
+
+> `homelab-thinkcentre` runs Tailscale **bare-metal** (`server_tailscale_baremetal.yml`),
+> not via this role, so it isn't covered by this key.
 
 ### Playbook Execution Order
 
@@ -117,162 +230,25 @@ The playbooks currently include the following roles:
 - **base**: Basic configuration of a Linux Debian server.
 - **user**: Adding `ansible-manager` superuser to the server with ssh access to the server.
 - **docker**: Configuration of Docker service including installing needed packages.
+- **ssh_security**: SSH hardening (used by `server_harden.yml`).
+- **docker_stack**: Generic docker-compose stack deployer used by every play in `apps.yml`.
+- **caddy / nextcloud / tailscale / borgbackup / borgmatic**: services with bespoke logic
+  (image builds, post-deploy `occ`, sysctl, cron) that the generic role can't cover; each
+  is driven by a thin `server_<name>.yml`.
 
 
 # Adding a New Service to the Homelab
 
-This document is the Standard Operating Procedure (SOP) for deploying a new containerized service to the host server. Following these steps ensures that the service is properly configured, networked, secured, and accessible.
+The full, current step-by-step procedure — covering local/public DNS, the Caddy
+site block, the `docker_stack` play, and exposing the service through the Cloudflare
+Tunnel — lives in **[INFRASTRUCTURE.md](INFRASTRUCTURE.md)**:
 
-## Prerequisites
+- **Section 3** — the concise 5-step recipe.
+- **Section 4** — a complete worked example (deploying and publicly exposing Uptime Kuma).
 
--   A working Ansible control machine with access to the server.
--   The service you want to deploy must be available as a Docker image.
--   Access to the Cloudflare, AdGuard Home, and Tailscale admin panels.
+For the quick "just add a compose app" pattern, see
+[The `docker_stack` role](#the-docker_stack-role) above.
 
----
-
-## Step 1: Planning & Variable Definition
-
-Before writing any code, define the key attributes of the new service.
-
--   **Service Name:** A short, lowercase name (e.g., `jellyfin`).
--   **Docker Image:** The full image name from Docker Hub (e.g., `jellyfin/jellyfin:latest`).
--   **Hostname:** The desired internal URL (e.g., `jellyfin.vojtechmarek.dev`).
--   **Internal Port:** The port the application listens on *inside* the container (e.g., `8096`).
--   **Persistent Data:** Identify which directories inside the container need to be saved. These will be mapped to `/srv/<service-name>/...` on the host.
-
-## Step 2: Public DNS Configuration (Cloudflare)
-
-This step makes the domain "real" so Caddy can get an SSL certificate for it.
-
--   [ ] Log in to the **Cloudflare Dashboard**.
--   [ ] Go to the DNS settings for `vojtechmarek.dev`.
--   [ ] Create a new **CNAME** record:
-    -   **Type:** `CNAME`
-    -   **Name:** The new service name (e.g., `jellyfin`).
-    -   **Content / Target:** `placeholder.vojtechmarek.dev` (your dummy hostname).
-    -   **Proxy status:** **DNS only (Grey Cloud)**. This is mandatory.
-
-## Step 3: Local & Remote DNS Configuration
-
-This step points your private networks to the server, keeping the service off the public internet.
-
--   [ ] **AdGuard Home (for LAN access):**
-    -   Log in to your AdGuard dashboard (`https://adguardhome.vojtechmarek.dev`).
-    -   Go to **Filters -> DNS Rewrites**.
-    -   Add a new rewrite:
-        -   **Domain:** `jellyfin.vojtechmarek.dev`
-        -   **Answer:** `192.168.0.146` (your server's local IP).
-
--   [ ] **Tailscale (for remote access):**
-    -   Log in to your Tailscale admin console.
-    -   Go to the **DNS** page.
-    -   Add a new MagicDNS entry:
-        -   **Name:** `jellyfin.vojtechmarek.dev`
-        -   **IP Address:** `homelab-thinkcentre` (your server's Tailscale name).
-
-## Step 4: Ansible Deployment Playbook
-
-Create the new Ansible playbook and associated template files for the service.
-
-1.  **Create the Docker Compose Template:**
-    -   Create a new file: `templates/<service-name>.docker-compose.yml.j2`.
-    -   Define the service, making sure to:
-        -   Use a `container_name`.
-        -   Set `restart: unless-stopped`.
-        -   Map all necessary persistent data volumes to `/srv/<service-name>/...` on the host.
-        -   **Do not** expose ports to the host unless absolutely necessary.
-        -   Connect the container to the shared `proxy` network.
-
-    ```yaml
-    # Example for templates/jellyfin.docker-compose.yml.j2
-    services:
-      jellyfin:
-        image: jellyfin/jellyfin:latest
-        container_name: jellyfin
-        restart: unless-stopped
-        volumes:
-          - "{{ app_config_path }}:/config"
-          - "{{ app_media_path }}:/media"
-        networks:
-          - proxy
-
-    networks:
-      proxy:
-        external: true
-    ```
-
-2.  **Create the Main Playbook:**
-    -   Create a new file: `deploy_<service-name>.yml`.
-    -   Use the standard pattern:
-        -   Define variables for paths (`project_path`, `app_config_path`, etc.).
-        -   Create the necessary directories under `/srv/<service-name>/` with an `ansible.builtin.file` task.
-        -   Copy the `docker-compose.yml.j2` template to the server.
-        -   Run the `community.docker.docker_compose_v2` module.
-        -   Include a handler for restarting the service.
-
-## Step 5: Configure the Reverse Proxy (Caddy)
-
-Tell Caddy how to route traffic to the new service.
-
--   [ ] Open the Caddyfile template: `templates/Caddyfile.public.j2`.
--   [ ] Add a new site block for the service:
-
-    ```
-    # In templates/Caddyfile.public.j2
-
-    https://jellyfin.vojtechmarek.dev {
-        tls {
-            dns cloudflare {env.CLOUDFLARE_API_TOKEN}
-        }
-        # Proxy to the new container on its internal port
-        reverse_proxy jellyfin:8096
-    }
-    ```
-
-## Step 6: Set domain deploy and Verify
-
-In your provider either: 
-### Create a new CNAME of the desired domain cname 
-For cloudflare go to domain settings under DNS-Records-Add Record 
-Type: CNAME
-Name: jellyfin
-Content: placeholderjellyfin (must be unique)
-Proxy Status: disabled -> DNS only
-TTL: auto
-
-### Add the domain as tunnelled dns record 
-For Cloudflare OneDash - Networks - Manage Tunnels - Go to your tunnel management / edit - Published application routes - Add new
-subdomain: jellyfin 
-domain: select yours
-service: HTTPS
-URL: caddy:443 (this will redirect all your tunneled networking to caddy to handle proxying requests)
-Additional Settings: 
-TLS 
-- Origin Server Name must be full domain url: jellyfin.vojtechmarek.dev
-- No TLS Verify - enabled
-HTTP settings 
-- HTTP Host Header : jelyyfin.vojtechmarek.dev
-
-
-Run the Ansible playbooks to apply all your changes.
-
-1.  **Run the new service playbook:**
-    ```bash
-    ansible-playbook -i inventory.ini deploy_jellyfin.yml --user xmarek -K
-    ```
-2.  **Run the Caddy playbook** to update its configuration:
-    ```bash
-    ansible-playbook -i inventory.ini deploy_caddy.yml --user xmarek -K
-    ```
-3.  **Verify DNS on your client machine:**
-    -   Flush your DNS cache (`ipconfig /flushdns` on Windows).
-    -   Run `ping jellyfin.vojtechmarek.dev`. It should resolve to `192.168.0.146`.
-4.  **Access the service:**
-    -   Open your browser and navigate to `https://jellyfin.vojtechmarek.dev`.
-    -   You should see the service's setup page or main interface with a valid SSL certificate.
-
----
 
 ## Client-Side Troubleshooting Checklist
 

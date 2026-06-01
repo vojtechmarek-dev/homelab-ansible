@@ -1,0 +1,6 @@
+---
+project_dir: /srv/tailscale
+state_dir: /srv/tailscale/state
+# Empty by default: most hosts join the tailnet without advertising a LAN.
+# Set per-host in host_vars/<host>.yml to enable subnet routing on that host.
+home_lan_subnet: ""

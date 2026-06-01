@@ -1,0 +1,8 @@
+---
+caddy_project_path: /srv/caddy
+caddy_build_path: /srv/caddy/build
+caddyfile_on_host: "{{ caddy_project_path }}/Caddyfile"
+cloudflare_token_from_vault: "{{ secrets.cloudflare_api_token }}"
+# Force a rebuild of the custom image: -e force_caddy_rebuild=true
+force_caddy_rebuild: false
+# `caddy_template` and `domain` are provided per host in inventory.yml.

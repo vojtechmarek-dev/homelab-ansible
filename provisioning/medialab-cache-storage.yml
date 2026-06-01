@@ -1,0 +1,42 @@
+---
+- name: Configure SSD Download Cache for Media Lab
+  hosts: medialab
+  become: yes
+
+  vars:
+    # Ověřeno přes lsblk
+    cache_disk: "/dev/sda"
+    mount_point: "/mnt/ssd_cache"
+
+  tasks:
+    - name: Format the SSD disk with ext4
+      community.general.filesystem:
+        fstype: ext4
+        dev: "{{ cache_disk }}"
+        opts: "-L SSD_CACHE"
+
+    - name: Ensure mount point directory exists
+      ansible.builtin.file:
+        path: "{{ mount_point }}"
+        state: directory
+        # Nastavíme vlastníka na UID 1000 (qbittorrent v Dockeru), aby mohl zapisovat
+        owner: "1000"
+        group: "1000"
+        mode: '0775'
+
+    - name: Mount the SSD disk
+      ansible.posix.mount:
+        path: "{{ mount_point }}"
+        src: "LABEL=SSD_CACHE"
+        fstype: ext4
+        state: mounted
+        opts: defaults,noatime,nofail
+
+    - name: Ensure correct permissions on mounted SSD cache
+      ansible.builtin.file:
+        path: "{{ mount_point }}"
+        state: directory
+        owner: "1000"
+        group: "1000"
+        mode: '0775'
+        recurse: yes

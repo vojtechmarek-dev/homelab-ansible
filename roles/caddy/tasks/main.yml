@@ -1,0 +1,42 @@
+---
+- name: Ensure the Caddy project directory exists
+  ansible.builtin.file:
+    path: "{{ caddy_project_path }}"
+    state: directory
+    mode: '0755'
+
+- name: Copy the Caddy build context to the server
+  ansible.builtin.copy:
+    src: build/
+    dest: "{{ caddy_build_path }}"
+    mode: '0644'
+
+- name: Build the custom Caddy image with the Cloudflare plugin
+  community.docker.docker_image:
+    name: caddy-custom
+    tag: latest
+    build:
+      path: "{{ caddy_build_path }}"
+      pull: true
+    source: build
+    force_source: "{{ force_caddy_rebuild }}"
+    state: present
+
+- name: Render the Caddyfile (per-host template)
+  ansible.builtin.template:
+    src: "{{ caddy_template }}"
+    dest: "{{ caddyfile_on_host }}"
+    mode: '0644'
+  notify: Restart Caddy
+
+- name: Render the Caddy docker-compose.yml
+  ansible.builtin.template:
+    src: docker-compose.yml.j2
+    dest: "{{ caddy_project_path }}/docker-compose.yml"
+    mode: '0644'
+  notify: Restart Caddy
+
+- name: Ensure the Caddy service is running
+  community.docker.docker_compose_v2:
+    project_src: "{{ caddy_project_path }}"
+    state: present
