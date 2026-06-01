@@ -235,6 +235,7 @@
   hosts: medialab
   become: true
   gather_facts: false
+  tags: media_stack
   vars:
     stack_name: medialab
     stack_path: /srv/medialab

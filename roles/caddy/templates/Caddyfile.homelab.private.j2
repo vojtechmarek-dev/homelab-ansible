@@ -32,3 +32,10 @@ https://journiv.{{ domain }} {
     }
     reverse_proxy journiv-postgres-app:8000
 }
+
+https://dockhand.{{ domain }} {
+    tls {
+        dns cloudflare {env.CLOUDFLARE_API_TOKEN}
+    }
+    reverse_proxy 192.168.66.167:3000
+}
