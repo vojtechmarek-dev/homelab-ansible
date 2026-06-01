@@ -262,144 +262,166 @@ If you get a `NS_ERROR_UNKNOWN_HOST` or similar DNS error after deployment:
 
 # Home Server Disaster Recovery Plan
 
-This part outlines the procedure to perform a full restore of the `managed` server from scratch in the event of a total system failure (e.g., OS disk corruption, hardware failure).
+Procedure for restoring the homelab when a host (or its data) is lost. Numbers and paths
+below reflect the **current** playbooks — older revisions of this section referenced
+playbooks (`deploy_*.yml`, `inventory.ini`) that no longer exist.
 
-The recovery process relies on two key components:
+## Backup Topology
 
-1.  **Ansible Playbooks:** Our "Infrastructure as Code" which rebuilds the server's configuration, services, and applications.
-2.  **Borg Backups:** Our data backups, stored on the external drive, which contain all user data, service configurations, and system settings.
+Two independent encrypted Borg repositories cover the two writer hosts. Both repositories
+use the same passphrase, stored in the vault as `secrets.borgbackup_password`.
+
+| Writer | Driver | Schedule | Sources | Destination |
+|---|---|---|---|---|
+| `kuzelovlab` | Borgmatic (Docker, `b3vis/borgmatic`) — `server_borgmatic.yml` | daily 04:00 | `/srv`, `/srv_fast`, `/mnt/samba_share` + pre-backup DB dumps (Authentik, Mealie, Seafile) to `/srv/database_dumps` | `ssh://borg@<thinkcentre TS IP>/mnt/backup_tank/kuzelovlab` (pushed over Tailscale) |
+| `homelab-thinkcentre` (a) | Borgmatic (Docker) — `server_borgmatic.yml` | daily 05:00 | `/srv`, `/etc` + pre-backup DB dump (Journiv) to `/srv/database_dumps` | local `/mnt/backup_tank/local_borg_repo` |
+| `homelab-thinkcentre` (b) | System `borg` + cron + bash script — `server_borgbackup.yml` (`roles/borgbackup`) | daily 02:30 | `/srv` | same local repo `/mnt/backup_tank/local_borg_repo` |
+
+Notes:
+
+- `homelab-thinkcentre` is also the **receiver** for `kuzelovlab`'s remote pushes — that side is configured by `server_prepare_remote_borg_backup.yml` (creates `borg` user + authorized key + target dir).
+- Both layers on `homelab-thinkcentre` write to the same repo path; pick whichever archive name is freshest at restore time.
+- Retention on both Borgmatic configs: `7 daily / 4 weekly / 6 monthly`.
+- Healthchecks.io pings on success: `secrets.kuzelovlab_borg_healtcheck_url` (kuzelovlab) and `secrets.healthcheck_borg_url` (homelab-thinkcentre + the system script).
 
 ## Prerequisites
 
-Before you begin, you must have:
+Before starting any restore, have:
 
-1.  **This Ansible Project:** The complete directory with all playbooks, templates, and the encrypted `secrets.yml` vault file.
-2.  **Ansible Vault Passphrase:** The password to decrypt `secrets.yml`.
-3.  **The External Backup Drive:** The physical hard drive containing the Borg backup repository.
-4.  **Borg Repository Passphrase:** The password you created to encrypt the Borg backups.
+1. A control node with this repo cloned, `direnv` activated (`ANSIBLE_CONFIG` exported), and `community.docker` installed (`ansible-galaxy collection install -r requirements.yml`).
+2. The vault passphrase for `../ansible-secrets/secrets.yml`.
+3. The Borg passphrase = `secrets.borgbackup_password` from the vault.
+4. SSH access (LAN initially; Tailscale once it's deployed) to the target host.
+5. **For Scenario A** — `homelab-thinkcentre` reachable and `/mnt/backup_tank` mounted.
+6. **For Scenario B** — the external backup-tank disk physically attached to the new `homelab-thinkcentre`; if the disk is gone, the only recoverable data is whatever is still live on `kuzelovlab`.
 
-## Recovery Procedure
+## Scenario A — `kuzelovlab` VM lost (Proxmox VM corruption / disk failure)
 
-The process is divided into two main phases: **System Rebuild** and **Data Restore**.
+The remote Borg repo on `homelab-thinkcentre:/mnt/backup_tank/kuzelovlab` is the authoritative source.
 
-### Phase 1: System Rebuild with Ansible
+```bash
+# 1. Re-create the VM in Proxmox with the original hostname + LAN IP from inventory.yml.
+#    Boot a minimal Debian (Trixie). Create the initial admin user xmarek + sshd.
 
-This phase rebuilds the server to the exact state it was in before the failure, but with empty data directories.
+# 2. Bootstrap from the control node (SSH password + sudo password the first time)
+ansible-playbook server_basic_config.yml --limit kuzelovlab -k -K --ask-vault-pass
+ansible-playbook server_user.yml         --limit kuzelovlab -k -K --ask-vault-pass
+ansible-playbook server_harden.yml       --limit kuzelovlab     -K --ask-vault-pass
 
-1.  **Prepare New Hardware:**
-    *   If the hardware failed, replace it.
-    *   Ensure the internal SSDs and the external backup drive are connected.
+# 3. Storage provisioning (destructive — only run on a fresh VM)
+ansible-playbook provisioning/kuzelovlab-vm-storage.yml     --limit kuzelovlab -K --ask-vault-pass
+ansible-playbook provisioning/kuzelovlab-fast-storage.yml   --limit kuzelovlab -K --ask-vault-pass
 
-2.  **Minimal Debian Installation:**
-    *   Install a fresh, minimal Debian system on the new internal SSD.
-    *   Follow the **"Minimal Manual Install"** procedure used during the initial setup:
-        *   Boot the installer in **UEFI mode**.
-        *   Choose **Manual Partitioning**.
-        *   Create only three partitions:
-            1.  `512 MB` - EFI System Partition
-            2.  `1 GB` - `/boot` (ext4)
-            3.  `50 GB` - `/` (ext4)
-        *   Leave the rest of the internal SSD as **unallocated free space**.
-    *   During installation, create the initial administrative user (e.g., `xmarek`) and install the SSH server.
+# 4. Docker + Tailscale (TS_AUTHKEY from vault makes this silent)
+ansible-playbook server_docker.yml    --limit kuzelovlab -K --ask-vault-pass
+ansible-playbook server_tailscale.yml --limit kuzelovlab -K --ask-vault-pass
 
-3.  **Prepare the Ansible Control Machine:**
-    *   Ensure your Ansible control machine (e.g., your laptop) has Ansible and SSH access to the newly installed server.
-    *   Update your `inventory.ini` file with the new server's IP address if it has changed.
+# 5. Restore /srv, /srv_fast, /mnt/samba_share from the remote Borg repo over Tailscale.
+#    Stop docker first so containers do not fight the restore.
+ssh ansible-manager@kuzelovlab
+sudo systemctl stop docker
+sudo apt install -y borgbackup
+export BORG_REPO=ssh://borg@100.99.5.102/mnt/backup_tank/kuzelovlab
+export BORG_PASSPHRASE='<secrets.borgbackup_password>'
+borg list                                     # pick the newest archive name
+sudo -E borg list ::<archive>                 # optional sanity peek
+cd /
+sudo -E borg extract --verbose --list ::<archive>     # restores srv, srv_fast, mnt/samba_share
+sudo systemctl start docker
+exit
 
-4.  **Run All Ansible Playbooks:**
-    *   Execute your playbooks in a logical order to rebuild the entire system configuration. The order is important.
+# 6. Re-deploy all services (data already on disk; compose just starts containers)
+ansible-playbook server_caddy.yml             --limit kuzelovlab -K --ask-vault-pass
+ansible-playbook server_cloudflared.yml                          -K --ask-vault-pass
+ansible-playbook apps.yml                     --limit kuzelovlab -K --ask-vault-pass
+ansible-playbook server_borgmatic.yml         --limit kuzelovlab -K --ask-vault-pass
+```
 
-    ```bash
-    # Make sure your user is in the sudo group on the new server first!
-    # You may need to do this manually by logging in as root at the console:
-    # usermod -aG sudo xmarek
+If a database container starts on an empty volume (it should not, because `/srv*` was restored), import the pre-backup dumps from `/srv/database_dumps/` — see **Database recovery from dumps** below.
 
-    # 1. Configure the base system (users, security, etc.)
-    ansible-playbook -i inventory.ini server_basic_config.yml --ask-become-pass
+## Scenario B — `homelab-thinkcentre` lost (bare-metal Lenovo)
 
-    # 2. Configure LVM on the remaining internal disk space
-    ansible-playbook -i inventory.ini configure_lvm.yml --ask-become-pass
+This is the harder case: the box is also the backup target for `kuzelovlab`. As long as the **external backup-tank disk survives**, both layers are recoverable.
 
-    # 3. Install Docker
-    ansible-playbook -i inventory.ini install_docker.yml --ask-become-pass
+```bash
+# 1. Reinstall Debian on the internal SSD with the original partitioning:
+#    EFI (512MB) + /boot (1GB, ext4) + / (50GB, ext4). Leave the rest unallocated.
+#    Reattach the external backup-tank drive (do NOT format it).
 
-    # 4. Deploy all your containerized services
-    ansible-playbook -i inventory.ini deploy_tailscale.yml --ask-become-pass
-    ansible-playbook -i inventory.ini deploy_adguard_home.yml --ask-become-pass
-    ansible-playbook -i inventory.ini deploy_caddy.yml --ask-become-pass
-    ansible-playbook -i inventory.ini deploy_stirling_pdf.yml --ask-become-pass
-    ansible-playbook -i inventory.ini deploy_nextcloud.yml --ask-become-pass
-    ansible-playbook -i inventory.ini deploy_samba.yml --ask-become-pass
+# 2. Bootstrap
+ansible-playbook server_basic_config.yml --limit homelab-thinkcentre -k -K --ask-vault-pass
+ansible-playbook server_user.yml         --limit homelab-thinkcentre -k -K --ask-vault-pass
+ansible-playbook server_harden.yml       --limit homelab-thinkcentre     -K --ask-vault-pass
 
-    # 5. Install the backup software (but don't run a backup yet)
-    ansible-playbook -i inventory.ini deploy_borg_backup.yml --ask-become-pass
-    ```
+# 3. Recreate the internal LVM layout (var/home/srv) — destructive
+ansible-playbook provisioning/homelab-lvm.yml --limit homelab-thinkcentre -K --ask-vault-pass
 
-At the end of this phase, your server is fully configured and all services are running, but all their data directories (like `/srv/nextcloud/app`) are empty.
+# 4. Bring the external backup-tank disk back online (LVM activation; do NOT mkfs)
+ssh ansible-manager@homelab-thinkcentre
+sudo apt install -y lvm2 borgbackup
+sudo vgscan && sudo vgchange -ay
+sudo mkdir -p /mnt/backup_tank
+# replace <vg>/<lv> with what `lvs` shows for the backup tank
+sudo mount /dev/<vg>/<lv> /mnt/backup_tank
+# add it to /etc/fstab so it persists across reboots
+exit
 
-### Phase 2: Data Restore with BorgBackup
+# 5. Restore /srv + /etc from the LOCAL Borg repo
+ssh ansible-manager@homelab-thinkcentre
+export BORG_PASSPHRASE='<secrets.borgbackup_password>'
+sudo -E borg list /mnt/backup_tank/local_borg_repo
+cd /
+sudo -E borg extract --verbose --list /mnt/backup_tank/local_borg_repo::<archive>   # restores srv, etc
+exit
 
-This phase populates the newly built server with your backed-up data.
+# 6. Networking (this host runs Tailscale BARE-METAL, not via the docker role)
+ansible-playbook server_tailscale_baremetal.yml --limit homelab-thinkcentre -K
 
-1.  **Prepare the External Drive:**
-    *   SSH into the newly rebuilt server.
-    *   Follow the manual steps to prepare the external drive for LVM and mount the backup volume. **DO NOT FORMAT OR WIPE IT.**
+# 7. Docker + services
+ansible-playbook server_docker.yml              --limit homelab-thinkcentre -K --ask-vault-pass
+ansible-playbook apps.yml                       --limit homelab-thinkcentre -K --ask-vault-pass
+ansible-playbook server_caddy.yml               --limit homelab-thinkcentre -K --ask-vault-pass
+ansible-playbook server_nextcloud.yml                                       -K --ask-vault-pass
 
-    ```bash
-    # Detect the LVM volumes on the external drive
-    sudo vgscan
-    sudo vgchange -ay external_vg
+# 8. Re-arm both backup layers + the remote-receiver side
+ansible-playbook server_prepare_remote_borg_backup.yml -K --ask-vault-pass   # restores borg user + authorized_keys + target dir
+ansible-playbook server_borgmatic.yml  --limit homelab-thinkcentre -K --ask-vault-pass
+ansible-playbook server_borgbackup.yml                              -K --ask-vault-pass
 
-    # Create the mount point and mount the backup volume
-    sudo mkdir -p /mnt/backups
-    sudo mount /dev/external_vg/backup_lv /mnt/backups
-    ```
+sudo reboot
+```
 
-2.  **Stop All Services:**
-    *   Before restoring data, it's crucial to stop the applications that use it to prevent conflicts.
+If the external disk is gone too, restart `kuzelovlab`'s backup chain from scratch (`borg init` will run automatically via the `borgbackup` role; the first `kuzelovlab` push will reinitialize the remote repo). All historical archives are lost.
 
-    ```bash
-    # Stop all your application containers
-    sudo docker stop nextcloud-app nextcloud-db nextcloud-redis stirling-pdf caddy samba
-    ```
+## Database recovery from dumps
 
-3.  **Perform the Borg Restore:**
-    *   We will use `borg extract` to restore the files. This command is run as `root` to preserve all file permissions.
-    *   First, find the name of the backup you want to restore from (usually the latest one).
+Borgmatic captures fresh dumps to `/srv/database_dumps/<service>.sql` immediately before every backup. After service containers come up but **before** users hit them, import as needed:
 
-    ```bash
-    # List all available backups
-    sudo BORG_PASSPHRASE='YOUR_BORG_PASSPHRASE' borg list /mnt/backups/borg-repo
-    ```
+```bash
+# on kuzelovlab
+docker exec -i authentik-postgresql-1 psql -U authentik authentik   < /srv/database_dumps/authentik.sql
+docker exec -i mealie-postgres        sh -c 'psql -U $POSTGRES_USER $POSTGRES_DB' < /srv/database_dumps/mealie.sql
+docker exec -i seafile-mysql          sh -c 'mariadb -u root -p"$MYSQL_ROOT_PASSWORD"'         < /srv/database_dumps/seafile.sql
 
-    *   Now, run the extract command. This restores the contents of the backup *into* the specified directories, overwriting the empty ones.
+# on homelab-thinkcentre
+docker exec -i journiv-postgres-db    psql -U journiv                                          < /srv/database_dumps/journiv.sql
+```
 
-    ```bash
-    # Set the name of the backup you want to restore from
-    BACKUP_NAME="backup-2025-06-30_02-30-00" # <-- Change this to your chosen backup
+In normal restores the database container's data dir (`/srv/<service>/postgres` or `/srv_fast/<service>/postgres`) is already restored from Borg, so import is only a fallback.
 
-    # Restore the data
-    sudo BORG_PASSPHRASE='YOUR_BORG_PASSPHRASE' borg extract \
-        --verbose \
-        --list \
-        /mnt/backups/borg-repo::${BACKUP_NAME} \
-        etc srv home
-    ```
+## What the backups do NOT cover
 
-    **Important:** This command must be run from the `/` directory. It will restore the `etc`, `srv`, and `home` folders from the backup directly into their correct locations on your root filesystem.
+- **Docker images** — re-pulled by the playbooks.
+- **Tailscale node identity** — wiped state means a re-registration; `secrets.tsauth_key` makes that silent (no browser).
+- **Cloudflare Tunnel state** — tunnel token lives in the vault; the tunnel registration persists on Cloudflare's side.
+- **SSH host keys** of restored hosts — other clients' `known_hosts` will mismatch on first reconnect; clear and re-accept.
+- **Borg encryption key file** if you ever switch a repo from `repokey` to `keyfile` mode — currently all repos use `repokey`, so the key is embedded in the repo and protected by the passphrase only. Keep `secrets.borgbackup_password` safe.
 
-4.  **Reboot the Server:**
-    *   A full reboot is the cleanest way to ensure all services start up correctly with their newly restored data and configuration.
+## Validation checklist
 
-    ```bash
-    sudo reboot
-    ```
-
-## Verification
-
-After the reboot, all your services should be running exactly as they were at the time of the last backup.
-*   Log in to Nextcloud and verify your files and photos are there.
-*   Check that Caddy is serving your domains correctly.
-*   Verify your Samba share is accessible.
-
-Your server is now fully recovered.
+- [ ] `/srv`, `/srv_fast`, `/mnt/samba_share` trees present at expected sizes (compare against `borg info ::<archive>`).
+- [ ] `docker ps` on each host matches the pre-disaster service set.
+- [ ] Caddy serves the LAN sites; Cloudflare Tunnel still routes public sites to `caddy:443`.
+- [ ] AdGuard rewrites resolve the LAN URLs to the host IP (split-horizon DNS).
+- [ ] Tailscale: node visible in admin, advertised routes (kuzelovlab) re-accepted.
+- [ ] First scheduled Borgmatic run pings Healthchecks.io successfully (next cron tick after restore).
