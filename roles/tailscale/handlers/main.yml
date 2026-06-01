@@ -3,4 +3,7 @@
   community.docker.docker_compose_v2:
     project_src: "{{ project_dir }}"
     state: present
-    restarted: true
+    # env-var changes (TS_AUTHKEY, TS_EXTRA_ARGS, TS_ROUTES, ...) require a
+    # container recreate, not just a restart. `restarted:` is not a supported
+    # parameter on community.docker 3.x's docker_compose_v2 anyway.
+    recreate: always

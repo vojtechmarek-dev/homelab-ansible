@@ -174,6 +174,32 @@ to decrypt it:
 ansible-playbook server_user.yml --ask-vault-pass
 ```
 
+### Tailscale preauth key
+
+The `tailscale` role consumes `secrets.tsauth_key` (preauth key) to register Docker-Tailscale
+hosts (`kuzelovlab`, `medialab`, `homelab-pi`) without a browser-based login. Generate
+it once in Tailscale admin (**Settings → Keys → Generate auth key**):
+
+- **Reusable** (same key serves all three hosts)
+- **Tagged** (e.g. `tag:server`) — avoids per-machine admin approval
+- **Expiry** 90 days for hygiene, or `never` for set-and-forget
+
+Add it to the vault file:
+
+```bash
+ansible-vault edit ../ansible-secrets/secrets.yml
+# add under all.vars.secrets:
+#   tsauth_key: tskey-auth-...
+```
+
+The key is only consumed on **first registration** (or when `/srv/tailscale/state` is
+wiped); once a host has a valid node identity, container recreates and VM reboots use the
+persisted state and ignore the key. With this set, deploying or reprovisioning a new
+Docker-Tailscale host is fully unattended — no browser click, no SIGTERM after 60s.
+
+> `homelab-thinkcentre` runs Tailscale **bare-metal** (`server_tailscale_baremetal.yml`),
+> not via this role, so it isn't covered by this key.
+
 ### Playbook Execution Order
 
 ## Bootstraping the server
