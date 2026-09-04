@@ -21,13 +21,14 @@
     source: build
     force_source: "{{ force_caddy_rebuild }}"
     state: present
+  notify: Restart Caddy
 
 - name: Render the Caddyfile (per-host template)
   ansible.builtin.template:
     src: "{{ caddy_template }}"
     dest: "{{ caddyfile_on_host }}"
     mode: '0644'
-  notify: Restart Caddy
+  notify: Reload Caddy
 
 - name: Render the Caddy docker-compose.yml
   ansible.builtin.template:

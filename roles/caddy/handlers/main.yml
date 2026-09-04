@@ -1,5 +1,18 @@
 ---
+- name: Validate Caddy config
+  community.docker.docker_container_exec:
+    container: caddy
+    command: caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
+  changed_when: false
+  listen: Reload Caddy
+
+- name: Reload Caddy config
+  community.docker.docker_container_exec:
+    container: caddy
+    command: caddy reload --config /etc/caddy/Caddyfile --adapter caddyfile
+  listen: Reload Caddy
+
 - name: Restart Caddy
   community.docker.docker_compose_v2:
     project_src: "{{ caddy_project_path }}"
-    state: present
+    state: restarted

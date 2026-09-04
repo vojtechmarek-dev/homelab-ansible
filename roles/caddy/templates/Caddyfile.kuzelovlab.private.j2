@@ -173,3 +173,17 @@ https://uptime.{{ domain }} {
     }
     reverse_proxy 192.168.0.45:3001
 }
+
+https://tdarr.{{ domain }} {
+    tls {
+        dns cloudflare {env.CLOUDFLARE_API_TOKEN}
+    }
+    reverse_proxy 192.168.0.30:8265
+}
+
+https://cleanuparr.{{ domain }} {
+    tls {
+        dns cloudflare {env.CLOUDFLARE_API_TOKEN}
+    }
+    reverse_proxy 192.168.0.30:11011
+}

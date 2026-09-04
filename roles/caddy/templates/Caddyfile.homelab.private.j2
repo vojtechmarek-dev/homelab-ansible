@@ -39,3 +39,24 @@ https://dockhand.{{ domain }} {
     }
     reverse_proxy 192.168.66.167:3000
 }
+
+https://nomad.{{ domain }} {
+    tls {
+        dns cloudflare {env.CLOUDFLARE_API_TOKEN}
+    }
+    reverse_proxy nomad_admin:8080
+}
+
+https://nomadkb.{{ domain }} {
+    tls {
+        dns cloudflare {env.CLOUDFLARE_API_TOKEN}
+    }
+    reverse_proxy 192.168.66.166:8090
+}
+
+https://nomadep.{{ domain }} {
+    tls {
+        dns cloudflare {env.CLOUDFLARE_API_TOKEN}
+    }
+    reverse_proxy 192.168.66.166:8310
+}
