@@ -35,7 +35,8 @@ services:
       - OIDC_CLIENT_SECRET={{ secrets.mealie_oidc_client_secret }}
       - OIDC_NAME=Authentik
       - OIDC_USER_CLAIM=email # Map the email from Authentik to the user in Mealie
-      - OIDC_REMEMBER_ME=true 
+      - OIDC_REMEMBER_ME=true
+      - OIDC_REQUIRES_EMAIL_VERIFICATION=false
 
     # --- NETWORK FIX ---
     # Force the container to resolve your auth domain to the Docker Host IP

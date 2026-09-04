@@ -3,6 +3,14 @@ services:
     image: tecnativa/docker-socket-proxy
     container_name: socket-proxy
     restart: unless-stopped
+    # Host networking instead of `ports:` — Docker's published-port bind
+    # races against tailscaled bringing up the {{ host_tailscale_ip }} address
+    # at boot. Bind fails (`cannot assign requested address`), the container
+    # exits, and `restart: unless-stopped` eventually gives up. With host
+    # networking the proxy listens on 0.0.0.0:2375 in the host netns
+    # regardless of tailscale0 state; the playbook's iptables rules restrict
+    # ingress on 2375 to the tailscale0 interface only.
+    network_mode: host
     environment:
       # Required for Dockhand core functionality
       - CONTAINERS=1
@@ -23,6 +31,3 @@ services:
       # - EXEC=1
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
-    ports:
-      # Securely bind ONLY to the Tailscale IP of this specific host
-      - "{{ host_tailscale_ip }}:2375:2375"
