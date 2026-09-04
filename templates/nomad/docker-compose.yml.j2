@@ -1,0 +1,108 @@
+# Project N.O.M.A.D. — rendered by roles/docker_stack from apps.yml.
+#
+# Host paths are pinned to {{ stack_path }} (the play's stack_path, /srv/nomad)
+# so all data lives under /srv like every other app. Secrets come from the
+# vault (../ansible-secrets/secrets.yml) — never hardcode "replaceme" here.
+#   storage / mysql / redis dirs are created by stack_extra_dirs in the play.
+name: project-nomad
+services:
+  admin:
+    image: ghcr.io/crosstalk-solutions/project-nomad:latest
+    pull_policy: always
+    container_name: nomad_admin
+    restart: unless-stopped
+    extra_hosts:
+      - "host.docker.internal:host-gateway"  # Enables host.docker.internal on Linux
+    networks:
+      - default   # reach mysql/redis
+      - proxy     # Caddy reaches nomad_admin:8080 here; no host port published
+    volumes:
+      # Host storage path. MUST match NOMAD_STORAGE_PATH below and the
+      # disk-collector mount. Child apps (Kiwix, Ollama, ...) auto-follow it.
+      - {{ stack_path }}/storage:/app/storage
+      - /var/run/docker.sock:/var/run/docker.sock # admin drives the host Docker daemon
+    environment:
+      - NODE_ENV=production
+      - NOMAD_STORAGE_PATH={{ stack_path }}/storage
+      - PORT=8080                  # in-container listen port; change the host side of `ports` instead
+      - LOG_LEVEL=info
+      - APP_KEY={{ secrets.nomad_app_key }}   # must be >= 16 chars or admin won't start
+      - HOST=0.0.0.0
+      - URL={{ nomad_url }}        # external URL the admin UI is reached at
+      - DB_HOST=mysql
+      - DB_PORT=3306
+      - DB_DATABASE=nomad
+      - DB_USER=nomad_user
+      - DB_PASSWORD={{ secrets.nomad_db_password }}   # must match mysql MYSQL_PASSWORD
+      - DB_NAME=nomad
+      - DB_SSL=false
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - DISABLE_COMPRESSION=false  # Caddy/Nginx skip re-compressing; set true only if it misbehaves
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+  dozzle:
+    # Optional log viewer. Powers the "Service Logs & Metrics" link in Settings.
+    image: amir20/dozzle:v10.0
+    container_name: nomad_dozzle
+    restart: unless-stopped
+    ports:
+      - "{{ nomad_dozzle_port }}:8080"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock # read host container logs
+    environment:
+      - DOZZLE_ENABLE_ACTIONS=false # Disabled — unauthenticated container stop/restart on LAN
+      - DOZZLE_ENABLE_SHELL=false  # Disabled — shell access + Docker socket = privilege escalation
+  mysql:
+    image: mysql:8.0
+    container_name: nomad_mysql
+    restart: unless-stopped
+    environment:
+      - MYSQL_ROOT_PASSWORD={{ secrets.nomad_mysql_root_password }}
+      - MYSQL_DATABASE=nomad
+      - MYSQL_USER=nomad_user
+      - MYSQL_PASSWORD={{ secrets.nomad_db_password }}   # must match admin DB_PASSWORD
+    volumes:
+      - {{ stack_path }}/mysql:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+  redis:
+    image: redis:7-alpine
+    container_name: nomad_redis
+    restart: unless-stopped
+    volumes:
+      - {{ stack_path }}/redis:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+  # NOTE: the upstream `updater` sidecar is intentionally OMITTED. It only
+  # bumps the management container image tags (not ZIM/Kiwix/Ollama data) and
+  # rewrites this Ansible-owned compose file, which we'd revert on next run.
+  # Container updates are handled by `stack_pull: always` + Watchtower instead.
+  disk-collector:
+    # Privileged read-only host-FS reader; feeds disk-usage stats to the admin UI.
+    image: ghcr.io/crosstalk-solutions/project-nomad-disk-collector:latest
+    pull_policy: always
+    container_name: nomad_disk_collector
+    restart: unless-stopped
+    volumes:
+      - /:/host:ro,rslave  # read-only host FS; rslave exposes /sys + /proc submounts
+      - {{ stack_path }}/storage:/storage
+
+networks:
+  default:        # internal: admin <-> mysql/redis
+  proxy:          # shared with Caddy (created by the caddy role)
+    external: true

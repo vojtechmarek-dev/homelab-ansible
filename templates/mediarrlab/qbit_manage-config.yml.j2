@@ -1,0 +1,227 @@
+---
+# Managed by Ansible — edits on the host will be overwritten.
+# Source: templates/mediarrlab/qbit_manage-config.yml.j2
+#
+# Purpose: reclaim disk automatically. Radarr/Sonarr hardlink from
+# /data/torrents into /data/media, so both names share one inode and cost
+# nothing extra. Anything that replaces the media copy (a Tdarr transcode, an
+# *arr quality upgrade) breaks that link, and the torrent copy silently becomes
+# a full-size duplicate. tag_nohardlinks spots those (tag: noHL) and the noHL
+# share_limits group deletes them.
+#
+# Public trackers only — no seed-time obligations, hence min_seeding_time 0.
+
+commands:
+  # Start with dry_run true; flip qbit_manage_dry_run to false in apps.yml once
+  # the logged plan looks right.
+  dry_run: {{ qbit_manage_dry_run | bool | lower }}
+  recheck: false
+  # Left off deliberately: with force_auto_tmm false a wrong cat/save_path map
+  # would silently recategorise the whole client. Enable only after `cat:` below
+  # is verified against the real client.
+  cat_update: false
+  tag_update: true
+  rem_unregistered: true
+  tag_tracker_error: false
+  rem_orphaned: true
+  # The two that actually reclaim space. Both were off before.
+  tag_nohardlinks: true
+  # share_limits is what applies cleanup (deletion). Kept separately switchable
+  # so noHL tags can be applied for real and inspected in the qBittorrent UI
+  # before anything is allowed to delete — dry_run can't validate this path,
+  # because with it on the noHL tag never persists for share_limits to match.
+  share_limits: {{ qbit_manage_share_limits | bool | lower }}
+  skip_qb_version_check: false
+  skip_cleanup: false
+
+qbt:
+  host: gluetun:8080
+  user: !ENV QBIT_USER
+  pass: !ENV QBIT_PASS
+
+settings:
+  force_auto_tmm: false
+  # Declared empty rather than omitted — qbit_manage warns and rewrites the
+  # config file on every run for any sub-attribute it doesn't find.
+  force_auto_tmm_ignore_tags: []
+  rem_unregistered_ignore_list: []
+  tracker_error_tag: issue
+  nohardlinks_tag: noHL
+  stalled_tag: stalledDL
+  private_tag:
+  share_limits_tag: ~share_limit
+  share_limits_min_seeding_time_tag: MinSeedTimeNotReached
+  share_limits_min_num_seeds_tag: MinSeedsNotMet
+  share_limits_last_active_tag: LastActiveLimitNotReached
+  cat_filter_completed: true
+  share_limits_filter_completed: true
+  # Only completed torrents are considered for noHL, so an in-progress download
+  # is never mistaken for a broken hardlink.
+  tag_nohardlinks_filter_completed: true
+  rem_unregistered_filter_completed: false
+  cat_update_all: false
+  disable_qbt_default_share_limits: true
+  tag_stalled_torrents: true
+  rem_unregistered_grace_minutes: 10
+  rem_unregistered_max_torrents: 10
+
+directory:
+  root_dir: /data/torrents/
+  # qbit_manage runs in a container with the same mount as qBittorrent, so
+  # remote_dir matches root_dir.
+  remote_dir: /data/torrents
+  recycle_bin: /data/torrents/.recycle_bin
+  # qBittorrent's BT_backup dir, bind-mounted read-only by the compose file.
+  # Must be the real .torrent store — qbit_manage aborts the whole run if this
+  # path holds no .torrent files.
+  torrents_dir: /torrents
+  orphaned_dir: /data/torrents/.orphans
+
+cat:
+{% for cat in qbit_categories %}
+  {{ cat.name }}: {{ cat.save_path }}
+{% endfor %}
+
+tracker:
+{% for t in qbit_private_trackers %}
+  # Private tracker: tagged so it can be held back from noHL auto-deletion.
+  {{ t.keyword }}:
+    tag: {{ t.tag }}
+{% endfor %}
+  # Everything else is a public tracker with no seeding obligation.
+  other:
+    tag: other
+
+nohardlinks:
+  # Only categories whose files *are* hardlinked into /data/media by an *arr.
+  # A category that never gets hardlinked (manual Prowlarr grabs) would be
+  # tagged noHL immediately and deleted, so it is left out entirely.
+{% for cat in qbit_categories if cat.nohardlinks | default(false) %}
+  {{ cat.name }}:
+    # Private-tracker torrents are tagged noHL like any other — they are still
+    # cleaned up, just via a higher-priority share-limit group that enforces a
+    # minimum seeding time first. See share_limits below.
+    # Hardlinks *inside* /data/torrents (cross-seeds) don't count as "in use";
+    # only a link out to /data/media does.
+    ignore_root_dir: true
+{% endfor %}
+
+share_limits:
+  # A torrent whose media hardlink is gone holds redundant data, so it gets
+  # deleted. Private trackers get their own group first, with a seeding-time
+  # floor so cleanup can never cause a hit-and-run.
+  #
+  # A torrent matches only the highest-priority group whose filters it meets,
+  # so the private groups (lower priority numbers) are tested before the
+  # catch-all noHL group below.
+{% for t in qbit_private_trackers %}
+  noHL-{{ t.tag }}:
+    priority: {{ loop.index }}
+    # AND condition: only noHL torrents from this specific tracker.
+    include_all_tags:
+      - noHL
+      - {{ t.tag }}
+    categories:
+{% for cat in qbit_categories if cat.nohardlinks | default(false) %}
+      - {{ cat.name }}
+{% endfor %}
+    # Time-based only, via max_seeding_time alone: cleanup fires once the
+    # torrent has seeded this long. min_seeding_time is deliberately NOT set —
+    # qbit_manage requires max_ratio > 0 alongside it, and a ratio trigger is
+    # meaningless here. Its own docs say to use max_seeding_time instead when
+    # no max_ratio is wanted.
+    #
+    # Counts total time seeded, not time since noHL was tagged. Long-
+    # established torrents are already past it and get cleaned up on the next
+    # run; this only holds back recent grabs.
+    max_seeding_time: {{ qbit_private_seeding_time }}
+    max_ratio: -1
+    min_num_seeds: 0
+    cleanup: true
+    resume_torrent_after_change: true
+    add_group_to_tag: true
+    custom_tag: sharelimits_noHL_{{ t.tag }}
+{% endfor %}
+  noHL:
+    priority: {{ (qbit_private_trackers | length) + 1 }}
+    include_all_tags:
+      - noHL
+    categories:
+{% for cat in qbit_categories if cat.nohardlinks | default(false) %}
+      - {{ cat.name }}
+{% endfor %}
+{% if qbit_private_trackers %}
+    # Private trackers are handled by the groups above; excluded here so a
+    # priority mix-up can't drop them into the no-floor group.
+    exclude_any_tags:
+{% for t in qbit_private_trackers %}
+      - {{ t.tag }}
+{% endfor %}
+{% endif %}
+    # Same time-based-only pattern as the private groups: 0 means the limit is
+    # already satisfied, so a noHL torrent is eligible immediately. Raise this
+    # to add a grace window (e.g. "2d") — do not add min_seeding_time, which
+    # would then demand a max_ratio.
+    max_seeding_time: {{ qbit_nohl_seeding_time }}
+    max_ratio: -1
+    min_num_seeds: 0
+    # The destructive bit: removes the torrent and its files.
+    cleanup: true
+    resume_torrent_after_change: true
+    add_group_to_tag: true
+    custom_tag: sharelimits_noHL
+  # Everything still hardlinked into /data/media: seed it, never delete it.
+  # Costs no extra disk while the link holds.
+  default:
+    priority: 999
+    max_ratio: {{ qbit_default_max_ratio }}
+    max_seeding_time: {{ qbit_default_max_seeding_time }}
+    cleanup: false
+
+recyclebin:
+  # Short window on purpose: /data runs near full, so deleted data has to
+  # actually free space instead of sitting in the bin for weeks.
+  enabled: true
+  empty_after_x_days: {{ qbit_recyclebin_days }}
+  save_torrents: true
+  split_by_category: false
+
+orphaned:
+  empty_after_x_days: {{ qbit_orphaned_days }}
+  min_file_age_minutes: 30
+  exclude_patterns:
+    - '**/.DS_Store'
+    - '**/Thumbs.db'
+    - '**/@eaDir'
+    - '**/*.!qB'
+    - '**/*_unpackerred'
+    # qBittorrent's incomplete dir is the SSD cache mounted in at this path;
+    # active downloads there belong to no completed torrent yet.
+    - /data/torrents/incomplete/**
+    - /data/torrents/.recycle_bin/**
+    - /data/torrents/.orphans/**
+    - /data/torrents/.torrent_backups/**
+  max_orphaned_files_to_delete: 50
+
+apprise:
+  api_url:
+  notify_url:
+
+notifiarr:
+  apikey:
+  instance:
+
+webhooks:
+  error:
+  run_start:
+  run_end:
+  function:
+    recheck:
+    cat_update:
+    tag_update:
+    rem_unregistered:
+    tag_tracker_error:
+    rem_orphaned:
+    tag_nohardlinks:
+    share_limits:
+    cleanup_dirs:

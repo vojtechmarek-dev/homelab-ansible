@@ -105,10 +105,31 @@
   roles:
     - docker_stack
 
+- name: Deploy Project N.O.M.A.D.
+  hosts: homelab-thinkcentre
+  become: true
+  gather_facts: false
+  tags: nomad
+  vars:
+    stack_name: nomad
+    stack_path: /srv/nomad
+    stack_compose_template: nomad/docker-compose.yml.j2
+    stack_pull: always
+    stack_extra_dirs:
+      - /srv/nomad/storage
+      - /srv/nomad/mysql
+      - /srv/nomad/redis
+    domain: vojtechmarek.dev
+    nomad_dozzle_port: "9999"
+    nomad_url: "https://nomad.{{ domain }}"
+  roles:
+    - docker_stack
+
 - name: Deploy Mealie Recipe Manager
   hosts: kuzelovlab
   become: true
   gather_facts: false
+  tags: mealie
   vars:
     stack_name: mealie
     stack_path: /srv/mealie
@@ -240,6 +261,9 @@
     stack_name: medialab
     stack_path: /srv/medialab
     stack_compose_template: mediarrlab/docker-compose.yml.j2
+    # Only cycle containers whose definition actually changed — a full recreate
+    # takes Jellyfin and the VPN-bound downloaders down for no reason.
+    stack_recreate: auto
     stack_extra_dirs:
       - /srv/medialab/config
       - /srv/medialab/config/prowlarr
@@ -253,9 +277,18 @@
       - /srv/medialab/config/jellystat/data
       - /srv/medialab/config/jellystat/backup-data
       - /srv/medialab/config/qbit_manage
+      - /srv/medialab/config/tdarr
     stack_dirs:
       # arr media data lives on the HDD, owned by the container UID
       - { path: /srv/medialab/config/seerr, owner: "1000", group: "1000", recurse: true }
+      # Tdarr images don't chown /app/* on start, so create them as the container UID
+      - { path: /srv/medialab/config/tdarr/server, owner: "1000", group: "1000", mode: "0755" }
+      - { path: /srv/medialab/config/tdarr/configs, owner: "1000", group: "1000", mode: "0755" }
+      - { path: /srv/medialab/config/tdarr/logs, owner: "1000", group: "1000", mode: "0755" }
+      # Cleanuparr writes its config DB as the container UID
+      - { path: /srv/medialab/config/cleanuparr, owner: "1000", group: "1000", mode: "0755" }
+      # transcode scratch space on the SSD cache
+      - { path: /mnt/ssd_cache/tdarr, owner: "1000", group: "1000", mode: "0775" }
       - { path: /data, owner: "1000", group: "1000", mode: "0775" }
       - { path: /data/torrents, owner: "1000", group: "1000", mode: "0775" }
       - { path: /data/torrents/.recycle_bin, owner: "1000", group: "1000", mode: "0775" }
@@ -264,7 +297,58 @@
       - { path: /data/media, owner: "1000", group: "1000", mode: "0775" }
       - { path: /data/media/movies, owner: "1000", group: "1000", mode: "0775" }
       - { path: /data/media/tv, owner: "1000", group: "1000", mode: "0775" }
+    stack_config_files:
+      - { src: mediarrlab/qbit_manage-config.yml.j2, dest: /srv/medialab/config/qbit_manage/config.yml, mode: "0644" }
     config_path: /srv/medialab/config
     data_path: /data
+
+    # --- qbit_manage: automatic reclaim of un-hardlinked torrent data ---
+    # A Tdarr transcode or an *arr upgrade replaces the file in /data/media,
+    # breaking its hardlink to /data/torrents. The torrent copy then stops being
+    # free and costs real disk. qbit_manage tags those `noHL` and deletes them.
+    #
+    # Rollout is three steps, because dry_run alone cannot validate cleanup:
+    # with dry_run on, the noHL tag never persists, so share_limits sees no
+    # noHL torrents and matches nothing.
+    #   1. dry_run true,  share_limits false -> read the plan in the logs
+    #   2. dry_run false, share_limits false -> tags applied for real, nothing
+    #      deleted; inspect the noHL tag in the qBittorrent UI
+    #   3. dry_run false, share_limits true  -> cleanup deletes
+    qbit_manage_dry_run: false
+    qbit_manage_share_limits: true
+    # qBittorrent category -> save path, as seen inside the containers.
+    # `nohardlinks: true` opts a category into noHL tagging + auto-deletion, so
+    # only categories an *arr actually hardlinks into /data/media qualify.
+    # Manual Prowlarr grabs are never hardlinked and would be deleted on sight.
+    qbit_categories:
+      - { name: radarr, save_path: /data/torrents/radarr, nohardlinks: true }
+      - { name: tv-sonarr, save_path: /data/torrents/tv-sonarr, nohardlinks: true }
+      - { name: prowlarr, save_path: /data/torrents/prowlarr }
+    # Private trackers, matched on a keyword in the announce URL. These are
+    # cleaned up like everything else, but only after qbit_private_seeding_time
+    # so cleanup can't cause a hit-and-run.
+    qbit_private_trackers:
+      - { keyword: sktorrent, tag: sktorrent }
+    # How long a private-tracker torrent must seed before cleanup may delete
+    # it. Counts total time seeded, so old torrents are already past it — this
+    # only holds back recent grabs. Raise it if sktorrent's rules demand more.
+    qbit_private_seeding_time: "30d"
+    # Public-tracker noHL torrents are redundant data with no seeding
+    # obligation, so they are eligible for deletion at once (0 = limit already
+    # met). Set to e.g. "2d" to add a grace window against a failed *arr
+    # import being deleted before you notice.
+    qbit_nohl_seeding_time: "0"
+    # Still-hardlinked torrents seed indefinitely — they share inodes with
+    # /data/media and cost nothing extra.
+    qbit_default_max_ratio: "-1"
+    qbit_default_max_seeding_time: "-1"
+    # The bin lives on /data itself: cleanup MOVES data into it rather than
+    # unlinking, so nothing is reclaimed until the bin is emptied. At 1 day
+    # that means no space returns for 24h, while a Tdarr run keeps adding new
+    # files — empty /data/torrents/.recycle_bin by hand when headroom gets
+    # tight, or set 0 to purge every run at the cost of losing the
+    # pre-transcode originals.
+    qbit_recyclebin_days: 1
+    qbit_orphaned_days: 7
   roles:
     - docker_stack

@@ -180,8 +180,9 @@ services:
     volumes:
       - /srv/medialab/config/jellyfin:/config
       - /data/media:/data/media
-    devices:
-      - /dev/dri:/dev/dri
+    # No devices: this VM only has QEMU's emulated VGA (1234:1111, card0 with no
+    # renderD128), so there is no DRM render node and no VAAPI. Transcoding is
+    # CPU-only until a real iGPU is passed through (or the stack moves to LXC).
     restart: unless-stopped
 
   # --- 9. JellyStat DB ---
@@ -228,11 +229,118 @@ services:
       - QBT_CONFIG=/config/config.yml
       - QBIT_PASS={{ secrets.qbittorrent_password }}
       - QBIT_USER={{ secrets.qbittorrent_user }}
+      # Every 30 min. Tdarr stream-copy work can add ~140 GB/h to /data, and
+      # nothing is reclaimed until a qbit_manage run tags the stranded torrents
+      # noHL and cleans them, so the cadence has to beat the transcode rate.
+      # Raise back to 360 once /data has real headroom.
+      # Which commands run is decided by the `commands:` block in config.yml,
+      # which overrides any QBT_* command flags set here.
+      - QBT_SCHEDULE=30
 
     volumes:
       - /srv/medialab/config/qbit_manage:/config
       - /data/torrents:/data/torrents
+      # qBittorrent's .torrent/.fastresume store, read-only. Required by
+      # recyclebin.save_torrents so a deleted torrent can be re-added.
+      - /srv/medialab/config/qbittorrent/qBittorrent/BT_backup:/torrents:ro
     depends_on:
       gluetun:
         condition: service_healthy
+    restart: unless-stopped
+
+  # --- 12.1 Tdarr (Media Transcoding Server) ---
+  tdarr:
+    image: ghcr.io/haveagitgat/tdarr:latest
+    container_name: tdarr
+    ports:
+      - 8265:8265 # Web UI
+      - 8266:8266 # Server port for Nodes
+    environment:
+      - TZ=Europe/Prague
+      - PUID=1000
+      - PGID=1000
+      - UMASK_SET=002
+      - serverIP=0.0.0.0
+      - serverPort=8266
+      - webUIPort=8265
+      # The tdarr-node container below is the only worker, so the server's
+      # built-in node stays off (otherwise two nodes fight over the same CPU)
+      - internalNode=false
+      - inContainer=true
+      - ffmpegVersion=7
+    volumes:
+      - /srv/medialab/config/tdarr/server:/app/server
+      - /srv/medialab/config/tdarr/configs:/app/configs
+      - /srv/medialab/config/tdarr/logs:/app/logs
+      # Map the media directory exactly as Sonarr/Radarr see it
+      - /data/media:/data/media
+      # Use the fast SSD cache for the heavy transcode writing
+      - /mnt/ssd_cache/tdarr:/temp
+    restart: unless-stopped
+
+  # --- 12.2 Tdarr Node (The Worker) ---
+  tdarr-node:
+    image: ghcr.io/haveagitgat/tdarr_node:latest
+    container_name: tdarr-node
+    environment:
+      - TZ=Europe/Prague
+      - PUID=1000
+      - PGID=1000
+      - UMASK_SET=002
+      - nodeName=Medialab-CPU-Node
+      - serverIP=tdarr
+      - serverPort=8266
+      - inContainer=true
+      - ffmpegVersion=7
+      - nodeType=mapped
+      # CPU-only node: leave headroom for Jellyfin transcodes on the same VM
+      - transcodecpuWorkers=2
+      - transcodegpuWorkers=0
+      - healthcheckcpuWorkers=1
+      - healthcheckgpuWorkers=0
+    volumes:
+      - /srv/medialab/config/tdarr/configs:/app/configs
+      - /srv/medialab/config/tdarr/logs:/app/logs
+      - /data/media:/data/media
+      - /mnt/ssd_cache/tdarr:/temp
+    # CPU-only encodes are slow by nature, so instead of a night-only schedule
+    # the node is capped and de-prioritised: it soaks up idle cycles but loses
+    # the CPU to Jellyfin/*arr whenever they want it. 4 of 6 cores max.
+    cpu_shares: 512
+    deploy:
+      resources:
+        limits:
+          cpus: "4.0"
+          memory: 4g
+    restart: unless-stopped
+
+  # --- 13. Cleanuparr (queue janitor) ---
+  # Sonarr/Radarr have no native handling for downloads they refuse to import —
+  # padded .exe/.lnk malware from public trackers sits in the queue until
+  # someone removes and blocklists it by hand. Cleanuparr does that, then
+  # triggers a fresh search so the *arr grabs the next release.
+  #
+  # Reaches the rest of the stack by service name on the default network:
+  # qBittorrent via gluetun:8080 (it shares gluetun's netns), sonarr:8989,
+  # radarr:7878. API keys and rules are configured in the web UI at :11011.
+  #
+  # Leave its orphan/seeding cleanup features OFF — qbit_manage already owns
+  # that, and two tools deleting the same data would fight.
+  cleanuparr:
+    image: ghcr.io/cleanuparr/cleanuparr:latest
+    container_name: cleanuparr
+    ports:
+      - 11011:11011
+    environment:
+      - PORT=11011
+      - PUID=1000
+      - PGID=1000
+      - TZ=Europe/Prague
+    volumes:
+      - /srv/medialab/config/cleanuparr:/config
+      # Same path as qBittorrent/*arr see it, so Cleanuparr needs no path
+      # mapping (leave its Download Directory Source/Target blank). Read-only
+      # on purpose: qbit_manage owns all deletion, so a file-touching feature
+      # switched on here fails loudly instead of quietly fighting it.
+      - /data:/data:ro
     restart: unless-stopped

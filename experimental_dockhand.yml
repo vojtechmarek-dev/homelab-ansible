@@ -8,6 +8,7 @@
     stack_name: dockhand
     stack_path: /srv/dockhand
     stack_compose_template: dockhand/docker-compose.yml.j2
+    stack_pull: always
     stack_extra_dirs:
       - /srv/dockhand/data
   roles:

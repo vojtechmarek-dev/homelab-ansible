@@ -1,6 +1,11 @@
 ---
 # Experimental — NOT imported by site.yml / apps.yml. Promote into apps.yml
 # (or delete) once verified. See README "Experimental playbooks".
+#
+# The proxy uses host networking and listens on 0.0.0.0:2375. The pre-tasks
+# below clamp ingress to the tailscale0 interface only — no LAN/external
+# host can reach the Docker socket even if something opens the port.
+
 - name: Experiment - Deploy Dockhand socket-proxy
   hosts: dockhand_servers
   become: true
@@ -9,7 +14,48 @@
     stack_name: dockhand-proxy
     stack_path: /srv/dockhand-proxy
     stack_compose_template: dockhand/proxy.docker-compose.yml.j2
-    # host_tailscale_ip comes from host_vars/<host>.yml and is consumed
-    # directly by the compose template.
+
+  pre_tasks:
+    - name: Pre-seed iptables-persistent so the install is non-interactive
+      ansible.builtin.debconf:
+        name: iptables-persistent
+        question: "iptables-persistent/{{ item.q }}"
+        value: "{{ item.v }}"
+        vtype: boolean
+      loop:
+        - { q: autosave_v4, v: 'false' }
+        - { q: autosave_v6, v: 'false' }
+
+    - name: Install iptables-persistent (so the rules survive reboot)
+      ansible.builtin.apt:
+        name: iptables-persistent
+        state: present
+        update_cache: true
+
+    - name: Allow TCP 2375 ingress only on the tailscale0 interface
+      ansible.builtin.iptables:
+        chain: INPUT
+        in_interface: tailscale0
+        protocol: tcp
+        destination_port: "2375"
+        jump: ACCEPT
+        action: insert
+        comment: "dockhand socket-proxy: accept from tailnet"
+      notify: persist iptables
+
+    - name: Drop TCP 2375 ingress from any other interface
+      ansible.builtin.iptables:
+        chain: INPUT
+        protocol: tcp
+        destination_port: "2375"
+        jump: DROP
+        action: append
+        comment: "dockhand socket-proxy: deny non-tailnet"
+      notify: persist iptables
+
   roles:
     - docker_stack
+
+  handlers:
+    - name: persist iptables
+      ansible.builtin.command: netfilter-persistent save
