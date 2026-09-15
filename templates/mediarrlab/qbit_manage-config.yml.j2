@@ -21,9 +21,17 @@ commands:
   # is verified against the real client.
   cat_update: false
   tag_update: true
-  rem_unregistered: true
+  # Removes torrents the tracker no longer recognises. Verified low-impact:
+  # logs show "No unregistered torrents found" on nearly every run. Capped by
+  # rem_unregistered_max_torrents per tracker per run.
+  rem_unregistered: {{ qbit_manage_rem_unregistered | bool | lower }}
   tag_tracker_error: false
-  rem_orphaned: true
+  # Verified: sampled orphans have no torrent in qBittorrent, so detection is
+  # correct. These are leftovers from torrents removed over time. Files that
+  # still have a /data/media twin lose only one directory entry (the inode
+  # survives), so cleaning them is safe and frees nothing; the real reclaim is
+  # the subset with link count 1.
+  rem_orphaned: {{ qbit_manage_rem_orphaned | bool | lower }}
   # The two that actually reclaim space. Both were off before.
   tag_nohardlinks: true
   # share_limits is what applies cleanup (deletion). Kept separately switchable
@@ -67,9 +75,10 @@ settings:
 
 directory:
   root_dir: /data/torrents/
-  # qbit_manage runs in a container with the same mount as qBittorrent, so
-  # remote_dir matches root_dir.
-  remote_dir: /data/torrents
+  # remote_dir is deliberately NOT set: qbit_manage upstream says it "should
+  # not be set if you are running qbit_manage in a container", and setting it
+  # (especially with a trailing-slash mismatch against root_dir) mangles the
+  # path comparison that orphan detection depends on.
   recycle_bin: /data/torrents/.recycle_bin
   # qBittorrent's BT_backup dir, bind-mounted read-only by the compose file.
   # Must be the real .torrent store — qbit_manage aborts the whole run if this
@@ -201,7 +210,7 @@ orphaned:
     - /data/torrents/.recycle_bin/**
     - /data/torrents/.orphans/**
     - /data/torrents/.torrent_backups/**
-  max_orphaned_files_to_delete: 50
+  max_orphaned_files_to_delete: {{ qbit_orphaned_max_delete }}
 
 apprise:
   api_url:

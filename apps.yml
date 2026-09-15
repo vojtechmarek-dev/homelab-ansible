@@ -315,6 +315,10 @@
     #      deleted; inspect the noHL tag in the qBittorrent UI
     #   3. dry_run false, share_limits true  -> cleanup deletes
     qbit_manage_dry_run: false
+    # Verified against the live client: sampled orphans had no torrent in
+    # qBittorrent. The initial sweep moved 719 files; routine runs find few.
+    qbit_manage_rem_orphaned: true
+    qbit_manage_rem_unregistered: true
     qbit_manage_share_limits: true
     # qBittorrent category -> save path, as seen inside the containers.
     # `nohardlinks: true` opts a category into noHL tagging + auto-deletion, so
@@ -332,16 +336,26 @@
     # How long a private-tracker torrent must seed before cleanup may delete
     # it. Counts total time seeded, so old torrents are already past it — this
     # only holds back recent grabs. Raise it if sktorrent's rules demand more.
-    qbit_private_seeding_time: "30d"
+    qbit_private_seeding_time: "1d"
     # Public-tracker noHL torrents are redundant data with no seeding
     # obligation, so they are eligible for deletion at once (0 = limit already
     # met). Set to e.g. "2d" to add a grace window against a failed *arr
     # import being deleted before you notice.
     qbit_nohl_seeding_time: "0"
-    # Still-hardlinked torrents seed indefinitely — they share inodes with
-    # /data/media and cost nothing extra.
+    # Still-hardlinked torrents cost no extra disk (shared inode with
+    # /data/media), so these limits are about load, not space: they STOP
+    # seeding at the limit, they are never deleted (cleanup: false on the
+    # default group). Reduces qBittorrent memory, upload and announce traffic
+    # from ~370 permanently-active torrents. Time-based only so the behaviour
+    # is predictable; -1 on ratio means ratio never triggers a stop.
+    #
+    # NOTE: this interacts with "Remove Completed Downloads" in Radarr/Sonarr.
+    # Once a torrent stops here, the *arr sees a completed download that is no
+    # longer seeding and removes it from the client, deleting the torrent-side
+    # hardlink. The media copy survives; the torrent does not. That is the
+    # intended lifecycle, not a bug — raise this value to seed for longer.
     qbit_default_max_ratio: "-1"
-    qbit_default_max_seeding_time: "-1"
+    qbit_default_max_seeding_time: "14d"
     # The bin lives on /data itself: cleanup MOVES data into it rather than
     # unlinking, so nothing is reclaimed until the bin is emptied. At 1 day
     # that means no space returns for 24h, while a Tdarr run keeps adding new
@@ -349,6 +363,15 @@
     # tight, or set 0 to purge every run at the cost of losing the
     # pre-transcode originals.
     qbit_recyclebin_days: 1
-    qbit_orphaned_days: 7
+    # Orphans are MOVED into .orphans on the same filesystem, so no space comes
+    # back until this window expires. Short, because /data is near full.
+    qbit_orphaned_days: 2
+    # Guard against a runaway sweep: qbit_manage skips the whole orphan step
+    # when it detects more files than this. Deliberately low for routine
+    # operation — /data/torrents is now clean, so a normal run should find only
+    # a handful. A large count means something is misconfigured, and skipping
+    # is the right response. Raise it temporarily for a known backlog (the
+    # initial sweep of 719 files needed 800).
+    qbit_orphaned_max_delete: 50
   roles:
     - docker_stack

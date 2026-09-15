@@ -52,10 +52,14 @@ services:
       # finished downloads go to media, but active torrents and incomplete downloads stay on the SSD cache for better performance
       - /data/torrents:/data/torrents
       - /mnt/ssd_cache:/data/torrents/incomplete
+    # 3g not 2g: with queueing limits lifted, ~370 active torrents push the
+    # working set to ~1.7g, and at a 2g cap the cgroup logged >1M forced-reclaim
+    # events (memory.events "max"). Nothing was OOM-killed, but the page cache
+    # for torrent data was being evicted constantly.
     deploy:
       resources:
         limits:
-          memory: 2g
+          memory: 3g
     depends_on:
       gluetun:
         condition: service_healthy
@@ -311,7 +315,7 @@ services:
       resources:
         limits:
           cpus: "4.0"
-          memory: 4g
+          memory: 2g
     restart: unless-stopped
 
   # --- 13. Cleanuparr (queue janitor) ---
