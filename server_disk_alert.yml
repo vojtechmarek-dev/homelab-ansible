@@ -1,0 +1,36 @@
+---
+# Gotify push when a filesystem runs low on free space.
+#
+# Run:  ansible-playbook server_disk_alert.yml --ask-vault-pass -K
+#
+# Needs a Gotify application token in the vault as `gotify_app_token`. Until
+# that exists the deployed script exits silently, so this is safe to run early.
+
+- name: Deploy disk space alerting
+  hosts: docker_nodes
+  become: true
+  gather_facts: false
+  vars:
+    disk_alert_paths:
+      - /
+  roles:
+    - disk_alert
+
+# medialab additionally watches /data, the 2.4TB media volume that the Tdarr
+# transcode campaign repeatedly pushed close to full, and /mnt/ssd_cache, which
+# holds Tdarr's transcode scratch and qBittorrent's incomplete downloads.
+- name: Deploy disk space alerting (medialab volumes)
+  hosts: medialab
+  become: true
+  gather_facts: false
+  vars:
+    disk_alert_paths:
+      - /
+      - /data
+      - /mnt/ssd_cache
+    # /data is a 2.4TB volume: 15% free is ~360GB, far more warning than needed.
+    # 8% (~190GB) still leaves room for several in-flight transcodes plus the
+    # recycle bin before anything breaks.
+    disk_alert_free_percent: 8
+  roles:
+    - disk_alert

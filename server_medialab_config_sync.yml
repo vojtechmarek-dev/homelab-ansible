@@ -1,0 +1,160 @@
+---
+# Nightly push of medialab's application config to kuzelovlab, where it sits
+# inside /srv and is therefore captured by kuzelovlab's existing borgmatic run
+# (encrypted, deduplicated, off-site, 7/4/6 retention).
+#
+# Why not borgmatic on medialab: its primary data (/data, 2.4TB of media and
+# torrents) is re-downloadable and deliberately unprotected. Only a couple of GB
+# of config is actually irreplaceable, which does not justify a second Borg
+# repository, container, key exchange and monitoring surface. Piggybacking on
+# kuzelovlab's existing backup gets the same protection for one cron job.
+#
+# Run: ansible-playbook server_medialab_config_sync.yml --ask-vault-pass -K
+#
+# The SSH key exchange is fully automated — Ansible generates the key on
+# medialab and authorises it on kuzelovlab in the same run. Nothing to paste
+# into the vault.
+
+- name: Generate medialab's sync key
+  hosts: medialab
+  become: true
+  gather_facts: false
+  vars:
+    config_sync_ssh_key: /root/.ssh/id_medialab_sync
+  tasks:
+    - name: Ensure root's SSH directory exists
+      ansible.builtin.file:
+        path: /root/.ssh
+        state: directory
+        owner: root
+        group: root
+        mode: '0700'
+
+    # ssh-keygen rather than community.crypto.openssh_keypair: that collection
+    # is not in requirements.yml and this needs no new dependency. `creates`
+    # makes it idempotent.
+    - name: Generate the sync keypair
+      ansible.builtin.command:
+        cmd: >-
+          ssh-keygen -t ed25519 -N '' -C 'medialab-config-sync'
+          -f {{ config_sync_ssh_key }}
+        creates: "{{ config_sync_ssh_key }}"
+
+    - name: Read the public key
+      ansible.builtin.slurp:
+        src: "{{ config_sync_ssh_key }}.pub"
+      register: medialab_sync_pubkey_raw
+
+    - name: Expose the public key to the next play
+      ansible.builtin.set_fact:
+        medialab_sync_pubkey: "{{ medialab_sync_pubkey_raw.content | b64decode | trim }}"
+
+- name: Authorise medialab on kuzelovlab
+  hosts: kuzelovlab
+  become: true
+  gather_facts: false
+  vars:
+    config_sync_dest_user: mediasync
+    config_sync_dest_path: /srv/medialab-backup
+  tasks:
+    # A dedicated unprivileged account: root SSH login is disabled by the
+    # ssh_security role, and this key should not be able to do anything except
+    # write into its own directory.
+    - name: Create the sync user
+      ansible.builtin.user:
+        name: "{{ config_sync_dest_user }}"
+        shell: /bin/bash
+        create_home: true
+        state: present
+        password_lock: true
+
+    - name: Create the destination directories
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        owner: "{{ config_sync_dest_user }}"
+        group: "{{ config_sync_dest_user }}"
+        mode: '0750'
+      loop:
+        - "{{ config_sync_dest_path }}"
+        - "{{ config_sync_dest_path }}/config"
+        - "{{ config_sync_dest_path }}/db_dumps"
+
+    - name: Authorise medialab's sync key
+      ansible.posix.authorized_key:
+        user: "{{ config_sync_dest_user }}"
+        state: present
+        key: "{{ hostvars['medialab']['medialab_sync_pubkey'] }}"
+        # The key is for rsync only — no shell conveniences, no tunnelling.
+        key_options: "no-agent-forwarding,no-port-forwarding,no-pty,no-user-rc,no-X11-forwarding"
+
+- name: Deploy the sync job on medialab
+  hosts: medialab
+  become: true
+  gather_facts: false
+  vars:
+    config_sync_dest_host: "192.168.0.20" # kuzelovlab
+    config_sync_dest_user: mediasync
+    config_sync_dest_path: /srv/medialab-backup
+    config_sync_ssh_key: /root/.ssh/id_medialab_sync
+    config_sync_dump_dir: /srv/medialab/db_dumps
+    config_sync_script_path: /usr/local/bin/medialab-config-sync.sh
+    config_sync_gotify_url: "http://192.168.0.20:8085"
+    # Regenerable or non-consistent data.
+    #
+    # Jellyfin's metadata lives under data/metadata in the linuxserver image,
+    # not at the top level — 2.9GB of artwork and NFO re-fetched from providers
+    # on demand, and it churns nightly so Borg cannot dedupe it away either.
+    # What is deliberately kept is data/library.db and data/jellyfin.db: users,
+    # watch history and resume points, the reason Jellyfin is backed up at all.
+    #
+    # jellystat/data is the live Postgres directory, dumped separately by the
+    # script because a file-level copy of a running database is not consistent.
+    config_sync_excludes:
+      - "jellyfin/data/metadata/"
+      - "jellyfin/data/transcodes/"
+      - "jellyfin/cache/"
+      - "jellyfin/transcodes/"
+      - "jellyfin/log/"
+      - "jellystat/data/"
+      - "tdarr/logs/"
+      - "*.log"
+    # 02:30 — after the *arr overnight activity, before kuzelovlab's borgmatic
+    # run at 04:00, so the night's config is already in place when Borg reads it.
+    config_sync_hour: "2"
+    config_sync_minute: "30"
+  tasks:
+    - name: Ensure rsync and curl are present
+      ansible.builtin.apt:
+        name:
+          - rsync
+          - curl
+        state: present
+        update_cache: true
+        cache_valid_time: 3600
+
+    - name: Ensure the database dump directory exists
+      ansible.builtin.file:
+        path: "{{ config_sync_dump_dir }}"
+        state: directory
+        owner: root
+        group: root
+        mode: '0700'
+
+    - name: Deploy the config sync script
+      ansible.builtin.template:
+        src: mediarrlab/config-sync.sh.j2
+        dest: "{{ config_sync_script_path }}"
+        owner: root
+        group: root
+        # 0700: the rendered script contains the Gotify application token.
+        mode: '0700'
+
+    - name: Schedule the nightly config sync
+      ansible.builtin.cron:
+        name: "medialab config sync to kuzelovlab"
+        hour: "{{ config_sync_hour }}"
+        minute: "{{ config_sync_minute }}"
+        user: root
+        job: "{{ config_sync_script_path }}"
+        cron_file: medialab-config-sync

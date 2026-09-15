@@ -1,0 +1,28 @@
+---
+# Sends a Gotify push when a filesystem drops below a free-space threshold, and
+# a second one when it recovers. Edge-triggered via a state file, so a disk that
+# sits below the threshold notifies once rather than on every run.
+#
+# Requires an application token from Gotify (Apps -> Create Application), stored
+# in the vault as `gotify_app_token`. Without it the script exits silently, so
+# the role is safe to run before the secret exists.
+
+# Filesystems to watch. Use mount points, not devices.
+disk_alert_paths:
+  - /
+
+# Alert when free space falls below this percentage.
+disk_alert_free_percent: 15
+
+# How often cron runs the check.
+disk_alert_interval_minutes: 15
+
+# Gotify lives on kuzelovlab, published on 8085.
+disk_alert_gotify_url: "http://192.168.0.20:8085"
+disk_alert_gotify_token: "{{ secrets.gotify_app_token | default('') }}"
+
+# Gotify priority: 8 raises a notification on most clients.
+disk_alert_priority: 8
+
+disk_alert_script_path: /usr/local/bin/disk-alert.sh
+disk_alert_state_dir: /var/lib/disk-alert

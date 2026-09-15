@@ -1,0 +1,57 @@
+#!/bin/sh
+# Managed by Ansible — roles/disk_alert/templates/disk-alert.sh.j2
+# Edits here will be overwritten.
+#
+# Warns via Gotify when a filesystem falls below a free-space threshold, and
+# again when it recovers. State files make it edge-triggered: one message per
+# transition, not one per cron run.
+
+set -u
+
+GOTIFY_URL="{{ disk_alert_gotify_url }}"
+GOTIFY_TOKEN="{{ disk_alert_gotify_token }}"
+THRESHOLD="{{ disk_alert_free_percent }}"
+PRIORITY="{{ disk_alert_priority }}"
+STATE_DIR="{{ disk_alert_state_dir }}"
+HOSTNAME_SHORT="$(hostname -s 2>/dev/null || hostname)"
+
+# No token configured yet: do nothing rather than fail a cron job every 15 min.
+[ -n "$GOTIFY_TOKEN" ] || exit 0
+
+mkdir -p "$STATE_DIR"
+
+notify() {
+    # -f so a 4xx/5xx is an error, but never let a failed push fail the script:
+    # a monitoring tool that breaks the host it monitors is worse than useless.
+    curl -fsS -m 10 -X POST "$GOTIFY_URL/message?token=$GOTIFY_TOKEN" \
+        -F "title=$1" \
+        -F "message=$2" \
+        -F "priority=$PRIORITY" >/dev/null 2>&1 || true
+}
+
+for mount in {{ disk_alert_paths | join(' ') }}; do
+    [ -d "$mount" ] || continue
+
+    # -P forces POSIX single-line output, so awk sees predictable columns even
+    # for long device names.
+    used_pct="$(df -P "$mount" 2>/dev/null | awk 'NR==2 {gsub(/%/,"",$5); print $5}')"
+    [ -n "$used_pct" ] || continue
+    free_pct=$((100 - used_pct))
+
+    human="$(df -Ph "$mount" 2>/dev/null | awk 'NR==2 {print $4" free of "$2}')"
+    state_file="$STATE_DIR/$(echo "$mount" | tr '/' '_').alerted"
+
+    if [ "$free_pct" -lt "$THRESHOLD" ]; then
+        if [ ! -f "$state_file" ]; then
+            notify "Disk low: $HOSTNAME_SHORT $mount" \
+                   "$human (${free_pct}% free, threshold ${THRESHOLD}%)"
+            : > "$state_file"
+        fi
+    else
+        if [ -f "$state_file" ]; then
+            notify "Disk recovered: $HOSTNAME_SHORT $mount" \
+                   "$human (${free_pct}% free)"
+            rm -f "$state_file"
+        fi
+    fi
+done

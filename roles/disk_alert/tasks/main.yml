@@ -1,0 +1,32 @@
+---
+- name: Ensure curl is present
+  ansible.builtin.apt:
+    name: curl
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: Ensure the alert state directory exists
+  ansible.builtin.file:
+    path: "{{ disk_alert_state_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+
+- name: Deploy the disk alert script
+  ansible.builtin.template:
+    src: disk-alert.sh.j2
+    dest: "{{ disk_alert_script_path }}"
+    owner: root
+    group: root
+    # 0700: the rendered script contains the Gotify application token.
+    mode: '0700'
+
+- name: Schedule the disk alert check
+  ansible.builtin.cron:
+    name: "disk free space alert"
+    minute: "*/{{ disk_alert_interval_minutes }}"
+    user: root
+    job: "{{ disk_alert_script_path }}"
+    cron_file: disk-alert

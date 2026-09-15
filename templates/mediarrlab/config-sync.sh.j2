@@ -1,0 +1,81 @@
+#!/bin/sh
+# Managed by Ansible — templates/mediarrlab/config-sync.sh.j2
+# Edits here will be overwritten.
+#
+# Pushes medialab's application config to kuzelovlab, where it lands inside
+# /srv and is therefore picked up by kuzelovlab's existing borgmatic run
+# (encrypted, deduplicated, shipped off-site, 7/4/6 retention).
+#
+# Deliberately NOT backing up /data: 2.4TB of media and torrents that are
+# re-downloadable. This protects only the config that cannot be reproduced —
+# *arr databases and quality profiles, Prowlarr indexer credentials, Jellyfin
+# users and watch history, qBittorrent settings and BT_backup.
+
+set -u
+
+DEST_HOST="{{ config_sync_dest_host }}"
+DEST_USER="{{ config_sync_dest_user }}"
+DEST_PATH="{{ config_sync_dest_path }}"
+SSH_KEY="{{ config_sync_ssh_key }}"
+DUMP_DIR="{{ config_sync_dump_dir }}"
+GOTIFY_URL="{{ config_sync_gotify_url }}"
+GOTIFY_TOKEN="{{ secrets.gotify_app_token | default('') }}"
+HOSTNAME_SHORT="$(hostname -s 2>/dev/null || hostname)"
+
+notify_failure() {
+    [ -n "$GOTIFY_TOKEN" ] || return 0
+    curl -fsS -m 10 -X POST "$GOTIFY_URL/message?token=$GOTIFY_TOKEN" \
+        -F "title=Config sync FAILED on $HOSTNAME_SHORT" \
+        -F "message=$1" \
+        -F "priority=8" >/dev/null 2>&1 || true
+}
+
+# JellyStat's Postgres is dumped rather than file-copied: a file-level copy of a
+# running database is not crash-consistent. The live data directory is excluded
+# from the rsync below.
+#
+# A failure here warns but does not abort. JellyStat holds viewing statistics,
+# whereas the rsync below carries the *arr databases and qBittorrent state — a
+# stopped stats container must not block the backup that actually matters.
+mkdir -p "$DUMP_DIR"
+if docker exec jellystat-db sh -c 'pg_dumpall -U postgres' > "$DUMP_DIR/jellystat.sql.tmp" 2>/dev/null; then
+    # Only replace the previous dump once the new one has succeeded, so a failed
+    # run never leaves a truncated file as the only copy.
+    mv "$DUMP_DIR/jellystat.sql.tmp" "$DUMP_DIR/jellystat.sql"
+else
+    notify_failure "pg_dumpall of jellystat-db failed; continuing with config sync"
+    rm -f "$DUMP_DIR/jellystat.sql.tmp"
+fi
+
+# --delete keeps the destination an exact mirror, so files removed here do not
+# accumulate there forever. Borg retains the history, so this loses nothing.
+#
+# --delete-excluded matters too: plain --delete *protects* excluded paths on the
+# receiver, so anything synced before an exclude was added would sit there
+# forever. With it, tightening the exclude list below cleans up retroactively on
+# the next run. Safe because the destination is a dedicated sync target that
+# nothing else writes to.
+rsync -a --delete --delete-excluded \
+    -e "ssh -i $SSH_KEY -o StrictHostKeyChecking=accept-new -o BatchMode=yes" \
+{% for pattern in config_sync_excludes %}
+    --exclude '{{ pattern }}' \
+{% endfor %}
+    /srv/medialab/config/ "$DEST_USER@$DEST_HOST:$DEST_PATH/config/"
+rsync_status=$?
+
+if [ "$rsync_status" -ne 0 ]; then
+    notify_failure "rsync to $DEST_HOST exited $rsync_status"
+    exit "$rsync_status"
+fi
+
+rsync -a --delete \
+    -e "ssh -i $SSH_KEY -o StrictHostKeyChecking=accept-new -o BatchMode=yes" \
+    "$DUMP_DIR/" "$DEST_USER@$DEST_HOST:$DEST_PATH/db_dumps/"
+rsync_status=$?
+
+if [ "$rsync_status" -ne 0 ]; then
+    notify_failure "rsync of db dumps to $DEST_HOST exited $rsync_status"
+    exit "$rsync_status"
+fi
+
+exit 0
