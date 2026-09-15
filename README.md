@@ -165,6 +165,14 @@ These playbooks deploy and manage specific services using Docker. They leverage 
 2. `server_tailscale.yml`: Configures the server as a Tailscale subnet router. It sets the required kernel parameters and generates a docker-compose.yml with the correct subnet configuration.
 
 
+### Maintenance & Monitoring Playbooks
+
+- `server_disk_alert.yml`: Deploys `roles/disk_alert` to every `docker_nodes` host — a cron'd script that pushes to Gotify when a filesystem falls below a free-space threshold, and again when it recovers. `medialab` additionally watches `/data` and `/mnt/ssd_cache` at an 8% floor, the volumes a Tdarr transcode run can fill quickly.
+- `server_medialab_config_sync.yml`: Nightly `rsync` of medialab's application config to `kuzelovlab:/srv/medialab-backup`, where kuzelovlab's Borgmatic picks it up. Generates and authorises its own SSH key, dumps the JellyStat database first, and notifies via Gotify on failure. See **Backup Topology** for why medialab has no Borg repo of its own.
+
+Both read the Gotify application token from the vault as `secrets.gotify_app_token`, and degrade silently (no pushes, no errors) if it is absent — so they are safe to deploy before the secret exists.
+
+
 ### Running playbooks with secrets
 Secrets live in the external vaulted inventory `../ansible-secrets/secrets.yml`, which
 `ansible.cfg` loads automatically (see [How to run](#how-to-run)). Pass `--ask-vault-pass`
@@ -235,6 +243,9 @@ The playbooks currently include the following roles:
 - **caddy / nextcloud / tailscale / borgbackup / borgmatic**: services with bespoke logic
   (image builds, post-deploy `occ`, sysctl, cron) that the generic role can't cover; each
   is driven by a thin `server_<name>.yml`.
+- **disk_alert**: Gotify push when a filesystem drops below a free-space threshold, plus a
+  recovery message. Edge-triggered via state files under `/var/lib/disk-alert`, so a full
+  disk notifies once rather than on every cron run. Driven by `server_disk_alert.yml`.
 
 
 # Adding a New Service to the Homelab
@@ -276,6 +287,7 @@ use the same passphrase, stored in the vault as `secrets.borgbackup_password`.
 | `kuzelovlab` | Borgmatic (Docker, `b3vis/borgmatic`) — `server_borgmatic.yml` | daily 04:00 | `/srv`, `/srv_fast`, `/mnt/samba_share` + pre-backup DB dumps (Authentik, Mealie, Seafile) to `/srv/database_dumps` | `ssh://borg@<thinkcentre TS IP>/mnt/backup_tank/kuzelovlab` (pushed over Tailscale) |
 | `homelab-thinkcentre` (a) | Borgmatic (Docker) — `server_borgmatic.yml` | daily 05:00 | `/srv`, `/etc` + pre-backup DB dump (Journiv) to `/srv/database_dumps` | local `/mnt/backup_tank/local_borg_repo` |
 | `homelab-thinkcentre` (b) | System `borg` + cron + bash script — `server_borgbackup.yml` (`roles/borgbackup`) | daily 02:30 | `/srv` | same local repo `/mnt/backup_tank/local_borg_repo` |
+| `medialab` | `rsync` over SSH + cron — `server_medialab_config_sync.yml` | daily 02:30 | `/srv/medialab/config` + JellyStat dump to `/srv/medialab/db_dumps` | `kuzelovlab:/srv/medialab-backup`, which sits inside kuzelovlab's Borg source and therefore reaches the remote repo on the 04:00 run |
 
 Notes:
 
@@ -283,6 +295,8 @@ Notes:
 - Both layers on `homelab-thinkcentre` write to the same repo path; pick whichever archive name is freshest at restore time.
 - Retention on both Borgmatic configs: `7 daily / 4 weekly / 6 monthly`.
 - Healthchecks.io pings on success: `secrets.kuzelovlab_borg_healtcheck_url` (kuzelovlab) and `secrets.healthcheck_borg_url` (homelab-thinkcentre + the system script).
+- **`medialab` has no Borg repository of its own, by design.** Its primary data (`/data` — ~2 TB of media and torrents) is re-downloadable and deliberately unprotected; the only irreplaceable state is ~1.4 GB of application config. A second repo, container, key exchange and monitoring surface was not worth that, so medialab piggybacks on kuzelovlab's existing backup and inherits its encryption, deduplication, off-site shipping and retention. The SSH key exchange is automated inside the playbook (generated on medialab, authorised on kuzelovlab as the unprivileged `mediasync` user) — there is no key to paste into the vault.
+- The medialab sync runs at 02:30, ahead of kuzelovlab's 04:00 Borg run, so each night's config is in place before Borg reads it.
 
 ## Prerequisites
 
@@ -393,6 +407,49 @@ sudo reboot
 
 If the external disk is gone too, restart `kuzelovlab`'s backup chain from scratch (`borg init` will run automatically via the `borgbackup` role; the first `kuzelovlab` push will reinitialize the remote repo). All historical archives are lost.
 
+## Scenario C — `medialab` VM lost (media stack)
+
+Unlike A and B this is a **partial** recovery by design: the config comes back from backup, the media does not.
+
+```bash
+# 1. Re-create the VM in Proxmox with the original hostname + LAN IP (192.168.0.30).
+#    Boot minimal Debian, create xmarek + sshd, then bootstrap from the control node.
+ansible-playbook server_basic_config.yml --limit medialab -k -K
+ansible-playbook server_user.yml         --limit medialab -k -K --ask-vault-pass
+ansible-playbook server_harden.yml       --limit medialab -K --ask-vault-pass
+
+# 2. Storage provisioning (destructive — only on a fresh VM).
+#    Skip medialab-media-storage.yml if the old /data disks survived: they hold the
+#    library and re-formatting is the one irreversible mistake available here.
+ansible-playbook provisioning/medialab-media-storage.yml --limit medialab -K --ask-vault-pass
+ansible-playbook provisioning/medialab-cache-storage.yml --limit medialab -K --ask-vault-pass
+
+# 3. Docker + Tailscale
+ansible-playbook server_docker.yml    --limit medialab -K --ask-vault-pass
+ansible-playbook server_tailscale.yml --limit medialab -K --ask-vault-pass
+
+# 4. Restore the config from kuzelovlab BEFORE starting the stack, so the containers
+#    come up against their real databases instead of generating empty ones.
+sudo mkdir -p /srv/medialab/config
+sudo rsync -a xmarek@192.168.0.20:/srv/medialab-backup/config/ /srv/medialab/config/
+sudo chown -R 1000:1000 /srv/medialab/config
+
+# 5. Deploy the stack
+ansible-playbook apps.yml --tags media_stack -K --ask-vault-pass
+
+# 6. Re-arm the config sync and alerting
+ansible-playbook server_medialab_config_sync.yml -K --ask-vault-pass
+ansible-playbook server_disk_alert.yml           -K --ask-vault-pass
+```
+
+If kuzelovlab's live copy is also gone, restore `/srv/medialab-backup` from its Borg archive first (Scenario A, step 5) and rsync from there.
+
+Afterwards:
+
+- **Jellyfin metadata** is not in the backup — trigger a library scan and it re-fetches artwork from providers.
+- **JellyStat** restores from `/srv/medialab-backup/db_dumps/jellystat.sql` (see below); its live data directory is excluded from the sync.
+- **If `/data` was lost**, Radarr and Sonarr still hold the full library definition, so re-searching everything is a matter of monitoring + a mass search rather than rebuilding the catalogue by hand.
+
 ## Database recovery from dumps
 
 Borgmatic captures fresh dumps to `/srv/database_dumps/<service>.sql` immediately before every backup. After service containers come up but **before** users hit them, import as needed:
@@ -416,6 +473,9 @@ In normal restores the database container's data dir (`/srv/<service>/postgres` 
 - **Cloudflare Tunnel state** — tunnel token lives in the vault; the tunnel registration persists on Cloudflare's side.
 - **SSH host keys** of restored hosts — other clients' `known_hosts` will mismatch on first reconnect; clear and re-accept.
 - **Borg encryption key file** if you ever switch a repo from `repokey` to `keyfile` mode — currently all repos use `repokey`, so the key is embedded in the repo and protected by the passphrase only. Keep `secrets.borgbackup_password` safe.
+- **`/data` on `medialab`** — the media library and torrent data. Re-downloadable, deliberately excluded, and the sync playbook does not even mount it so it cannot be captured by accident. A total loss of medialab means re-acquiring the library, not reconstructing it.
+- **Jellyfin metadata** (`config/jellyfin/data/metadata`) — ~3 GB of artwork and NFO that Jellyfin re-fetches from providers on demand. Excluded because it also churns nightly, which defeats Borg's deduplication.
+- **Tdarr's processing history** — the server DB is synced, but even without it a rescan simply re-detects which files are already h265 and skips them.
 
 ## Validation checklist
 

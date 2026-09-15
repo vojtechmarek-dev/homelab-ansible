@@ -66,7 +66,7 @@ To optimize performance, we separate databases (high IOPS) from bulk storage (hi
 
 - **Authentik:** Centralized Identity Provider (OIDC/OAuth2) running on `kuzelovlab` behind Caddy. It protects Immich (`fotky.zen132.cz`), providing seamless SSO for web and mobile clients.
 
-### IV. Automated 3-2-1 Backups (Borgmatic)
+### IV. Automated 3-2-1 Backups (Borgmatic + config sync)
 
 - **Borgmatic (Docker-based on Kuzelovlab):**
   - Runs on a schedule at **03:00 AM**.
@@ -78,7 +78,39 @@ To optimize performance, we separate databases (high IOPS) from bulk storage (hi
   - Runs locally at **05:00 AM**.
   - Performs database dumps for Journiv.
   - Backs up `/srv` to `/mnt/backup_tank/local_lenovo` (the internal SATA SSD).
+- **Config sync (MediaLab):**
+  - Runs at **02:30 AM**, ahead of Kuzelovlab's Borg run so the night's config is already in place.
+  - `rsync` of `/srv/medialab/config` (~1.4GB) to `kuzelovlab:/srv/medialab-backup`, which sits inside Kuzelovlab's Borg source — so it inherits encryption, deduplication, off-site shipping and 7/4/6 retention without a second repository.
+  - MediaLab has **no Borg repo of its own on purpose**: `/data` (~2TB of media and torrents) is re-downloadable and deliberately unprotected, leaving only config worth keeping. A second repo, container and key exchange was not worth 1.4GB.
+  - Jellyfin's metadata is excluded — it is re-fetched from providers and churns nightly, which would defeat deduplication.
 - **The Hardware Quirk:** The remote 1TB SSD uses the `usb-storage` kernel quirk (disabling buggy UAS) to ensure 100% write stability on the physical disk without silent data corruption.
+
+### V. Storage Lifecycle on MediaLab
+
+`/data` is a fixed 2.4TB volume with no expansion path, so the media stack manages its own reclamation rather than relying on headroom.
+
+**Hardlinks are the foundation.** Radarr and Sonarr import from `/data/torrents` into `/data/media` by hardlink, so both names share one inode and a seeding torrent costs no extra disk. Anything that *replaces* a media file — a Tdarr transcode, an \*arr quality upgrade, a manual delete — breaks that link, and the torrent copy silently becomes a full-size duplicate.
+
+**qbit_manage** (every 30 min) is what notices. Its `tag_nohardlinks` check tags un-linked torrents `noHL`, and the `share_limits` groups then delete them:
+
+| group | matches | seeding floor | deletes |
+|---|---|---|---|
+| `noHL-sktorrent` | `noHL` + private tracker | `qbit_private_seeding_time` | yes |
+| `noHL` | `noHL`, public trackers | none | yes, immediately |
+| `default` | still hardlinked | `qbit_default_max_seeding_time` | no — stops only |
+
+Deletions route through `/data/torrents/.recycle_bin` for a short window before the space actually returns.
+
+**Two non-obvious interactions, both intentional:**
+
+1. **The `default` group stops torrents; Radarr/Sonarr then remove them.** With *Remove Completed Downloads* enabled, an \*arr sees a completed download that is no longer seeding and deletes it from the client. So `qbit_default_max_seeding_time` is effectively "how long before a torrent is discarded", not just "stopped". The media copy survives — only the torrent-side hardlink goes.
+2. **Transcoding after the torrent is gone is strictly cheaper.** A still-linked file costs `new + stranded original` until cleanup runs; a file whose torrent has already been removed is link-count-1, so the old data frees the instant Tdarr replaces it. No tag, no wait, no recycle bin.
+
+**Tdarr** transcodes h264 → h265 on CPU only (the VM has emulated VGA, no render node, so every hardware encoder reports *enabled but not working*). Plugin filters exclude h265, 2160p and HDR/DV; `Migz1FFMPEG_CPU` is used rather than the `075*` plugins because it preserves subtitle and audio streams.
+
+**Cleanuparr** removes downloads the \*arrs refuse to import — notably padded `.exe` malware from public trackers, which otherwise sits in the queue until cleared by hand.
+
+> **Not captured by Ansible:** qBittorrent's own settings — torrent queueing limits, excluded file names, WebUI options — live only in `qBittorrent.conf` on the host. They *are* covered by the config sync, but a from-scratch rebuild needs them set by hand. qbit_manage owns all share limits (`disable_qbt_default_share_limits: true`), so setting those in the qBittorrent UI is pointless: they are overwritten within 30 minutes. Change them in `apps.yml`.
 
 ---
 
@@ -260,6 +292,37 @@ cd /mnt/recovery/srv/
 
 # Unmount when finished
 sudo docker exec -it borgmatic borgmatic umount --mountpoint /mnt/recovery
+```
+
+### Media Stack Storage (on MediaLab)
+
+```bash
+# Force a reclaim pass instead of waiting for the 30-minute cycle
+sudo docker restart qbit_manage && sleep 30 && sudo docker logs --since 40s qbit_manage | tail -20
+
+# What was deleted, and by which share-limit group
+sudo docker logs qbit_manage 2>&1 | grep -E 'Cleaning up torrents|Contents Deleted' | tail
+
+# Torrent data with no remaining media hardlink (i.e. reclaimable)
+find /data/torrents/radarr /data/torrents/tv-sonarr -type f -links 1 -size +100M -printf '%s\n' \
+  | awk '{s+=$1} END {printf "%.1f GiB in %d files\n", s/1073741824, NR}'
+
+# Pending reclaim still parked on disk
+sudo du -sh /data/torrents/.recycle_bin /data/torrents/.orphans
+
+# Codec census of the library (filename-based; Tdarr itself reads real metadata)
+find /data/media -type f \( -name '*.mkv' -o -name '*.mp4' \) -printf '%s\t%p\n' \
+  | awk -F'\t' '{c=tolower($2)
+      if (c ~ /2160p/) b="2160p"; else if (c ~ /x265|h265|hevc/) b="h265"
+      else if (c ~ /x264|h264|avc/) b="h264 (transcodable)"; else b="unknown"
+      n[b]++; s[b]+=$1} END {for (k in n) printf "%-20s %5d files %8.1f GiB\n", k, n[k], s[k]/1073741824}'
+
+# Test the disk alert path end to end (sends, then clears on the next normal run)
+ansible-playbook server_disk_alert.yml --ask-vault-pass -K -e disk_alert_free_percent=99
+sudo /usr/local/bin/disk-alert.sh
+
+# Force a config sync rather than waiting for 02:30
+sudo /usr/local/bin/medialab-config-sync.sh && echo OK
 ```
 
 ### Docker Cleanup (run monthly to reclaim SSD space)
