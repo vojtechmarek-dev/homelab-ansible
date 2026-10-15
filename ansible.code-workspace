@@ -8,6 +8,7 @@
 		}
 	],
 	"settings": {
-		"ansible.python.interpreterPath": "c:\\Program Files\\Python313\\python.exe"
+		"ansible.python.interpreterPath": "c:\\Program Files\\Python313\\python.exe",
+		"files.eol": "\n"
 	}
 }
