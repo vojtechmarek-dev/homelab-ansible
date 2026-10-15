@@ -71,6 +71,7 @@ To optimize performance, we separate databases (high IOPS) from bulk storage (hi
 - **Borgmatic (Docker-based on Kuzelovlab):**
   - Runs on a schedule at **03:00 AM**.
   - Triggers native database dumps (`mariadb-dump`, `pg_dumpall`) into `/srv/database_dumps` right before backup.
+  - CouchDB (Obsidian LiveSync, `/srv_fast/obsidian-livesync`) has no dump hook on purpose: its `.couch` files are append-only, so a live file copy is consistent. Every synced device also holds a full copy of the vault.
   - Compresses, encrypts, and deduplicates the entirety of `/srv` and `/srv_fast`.
   - Ships backups over Tailscale to the remote Lenovo server.
   - Integrates with Healthchecks.io for active success/failure monitoring on the dashboard.

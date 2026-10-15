@@ -1,0 +1,33 @@
+services:
+  couchdb:
+    # Pinned to the major: Watchtower runs on this host and would otherwise
+    # pull a future CouchDB 4 straight onto a 3.x data directory.
+    image: couchdb:3
+    container_name: obsidian-couchdb
+    restart: unless-stopped
+    environment:
+      # The entrypoint writes this admin into local.d/docker.ini, which is in
+      # the container layer (only /opt/couchdb/data is a volume). Every recreate
+      # starts from the vault values, so rotating the password is a vault edit
+      # plus a redeploy — no stale hashed admin survives on disk.
+      - COUCHDB_USER={{ secrets.obsidian_couchdb_user }}
+      - COUCHDB_PASSWORD={{ secrets.obsidian_couchdb_password }}
+    deploy:
+      resources:
+        limits:
+          memory: 1000M
+    volumes:
+      - "{{ db_path }}:/opt/couchdb/data"
+      # Read-only, and owned 5984:5984 on the host by the play. The entrypoint
+      # runs under `set -e` and chowns anything in /opt/couchdb not owned by
+      # couchdb; against a root-owned read-only file that chown fails and the
+      # container exits before CouchDB starts.
+      - "{{ stack_path }}/livesync.ini:/opt/couchdb/etc/local.d/10-livesync.ini:ro"
+    # No host port: Caddy reaches it over `proxy`, so CouchDB is never
+    # reachable on the LAN without TLS in front of it.
+    networks:
+      - proxy
+
+networks:
+  proxy:
+    external: true

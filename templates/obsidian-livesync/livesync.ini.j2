@@ -1,0 +1,50 @@
+; CouchDB settings for Obsidian LiveSync, mounted read-only at
+; /opt/couchdb/etc/local.d/10-livesync.ini.
+;
+; The "10-" prefix is load-bearing. CouchDB reads local.d/*.ini in sorted order
+; and writes runtime changes (hashed admin password, generated secret, anything
+; set through the _config API) to the LAST file in the chain. The entrypoint's
+; docker.ini sorts after this one, so those writes land there, in the container
+; layer, and never here. Rename this to sort after "docker.ini" and CouchDB
+; tries to write a read-only file.
+;
+; Consequence: a setting changed in Fauxton, or by LiveSync's "Check database
+; configuration" fixer, overrides this file until the next recreate and is then
+; lost. Make permanent changes here.
+
+[couchdb]
+single_node = true
+; Pinned because docker.ini does not survive a recreate. Unpinned, CouchDB
+; mints a new server uuid on every redeploy, and PouchDB folds the server uuid
+; into its replication checkpoint IDs — every device would then rescan the
+; whole changes feed from zero. Not a secret.
+uuid = 8682c9f5d750a32ddc99f9faed5ac82d
+; LiveSync stores attachments as chunked documents; upstream recommends 50 MB.
+max_document_size = 50000000
+
+[chttpd]
+require_valid_user = true
+max_http_request_size = 4294967296
+enable_cors = true
+
+[chttpd_auth]
+require_valid_user = true
+authentication_redirect = /_utils/session.html
+
+[httpd]
+WWW-Authenticate = Basic realm="couchdb"
+enable_cors = true
+
+; CORS is answered by CouchDB, not Caddy — see the Caddyfile block.
+; app://obsidian.md is desktop, capacitor://localhost is mobile.
+;
+; `headers` and `methods` are deliberately unset, matching upstream's
+; provision.ts. Setting `headers` REPLACES CouchDB's built-in allow-list
+; (19 entries, incl. authorization/content-type/accept) instead of extending
+; it, and a preflight asking for anything unlisted is refused. Only set it
+; when LiveSync is given custom request headers (e.g. Cloudflare Access
+; cf-access-client-id/-secret), and then copy the built-in list in as well.
+[cors]
+origins = app://obsidian.md,capacitor://localhost,http://localhost
+credentials = true
+max_age = 3600

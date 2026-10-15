@@ -10,7 +10,7 @@
 #   stack_dirs              list of dirs needing per-dir settings, items:
 #                             { path, owner?, group?, mode?, recurse? }
 #   stack_config_files      list of config templates, items:
-#                             { src, dest, mode? }  (rendered before compose)
+#                             { src, dest, mode?, owner?, group? }  (rendered before compose)
 #   stack_pull              compose pull policy: always | missing | never  (default: missing)
 #   stack_recreate          restart-handler recreate policy: auto | always | never (default: always)
 #   stack_dir_owner/group   owner/group for stack_path + stack_extra_dirs (default: root)

@@ -143,6 +143,33 @@
   roles:
     - docker_stack
 
+- name: Deploy Obsidian LiveSync (CouchDB)
+  hosts: kuzelovlab
+  become: true
+  gather_facts: false
+  tags: obsidian
+  vars:
+    stack_name: obsidian-livesync
+    stack_path: /srv/obsidian-livesync
+    stack_compose_template: obsidian-livesync/docker-compose.yml.j2
+    # stack_recreate stays at the default `always` on purpose. The ini is a
+    # single-file bind mount: Ansible replaces it by rename, the running
+    # container keeps the old inode, and `auto` sees an unchanged compose
+    # definition and recreates nothing — an ini edit would never apply. One
+    # container, so a full recreate costs nothing.
+    stack_dirs:
+      # CouchDB runs as uid 5984 and the entrypoint chowns the data dir to it
+      # on every start; create it that way so each run doesn't flip it back.
+      - { path: /srv_fast/obsidian-livesync/data, owner: "5984", group: "5984", mode: "0755" }
+    stack_config_files:
+      # 5984:5984 and 0644 are both required, not cosmetic: the entrypoint
+      # chowns/chmods anything else under /opt/couchdb, which fails on this
+      # read-only mount and aborts startup (see the compose template).
+      - { src: obsidian-livesync/livesync.ini.j2, dest: /srv/obsidian-livesync/livesync.ini, mode: "0644", owner: "5984", group: "5984" }
+    db_path: /srv_fast/obsidian-livesync/data
+  roles:
+    - docker_stack
+
 - name: Deploy Samba File Share
   hosts: samba_servers
   become: true

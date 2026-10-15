@@ -1,0 +1,5 @@
+# Pin LF everywhere. Git for Windows ships core.autocrlf=true system-wide, so
+# the Windows control node checks files out as CRLF — and a CR rendered onto a
+# Linux host breaks shell snippets, cron lines and ini files in ways that are
+# hard to see. eol=lf overrides autocrlf on checkout and on commit.
+* text=auto eol=lf

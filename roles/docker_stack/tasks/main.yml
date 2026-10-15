@@ -33,6 +33,8 @@
     src: "{{ item.src }}"
     dest: "{{ item.dest }}"
     mode: "{{ item.mode | default(stack_config_mode) }}"
+    owner: "{{ item.owner | default(omit) }}"
+    group: "{{ item.group | default(omit) }}"
   loop: "{{ stack_config_files }}"
   loop_control:
     label: "{{ item.dest }}"

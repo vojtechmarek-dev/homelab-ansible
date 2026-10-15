@@ -167,6 +167,17 @@ https://kucharka.{{ domain }} {
     reverse_proxy mealie:9000
 }
 
+# Obsidian LiveSync (CouchDB). Keep this a plain pass-through: CouchDB answers
+# CORS itself, and headers added here would be duplicated, which Obsidian
+# rejects. The live _changes feed is chunked, so Caddy already streams it
+# without buffering — no flush_interval needed.
+https://obsidian.{{ domain }} {
+    tls {
+        dns cloudflare {env.CLOUDFLARE_API_TOKEN}
+    }
+    reverse_proxy obsidian-couchdb:5984
+}
+
 https://uptime.{{ domain }} {
     tls {
         dns cloudflare {env.CLOUDFLARE_API_TOKEN}
