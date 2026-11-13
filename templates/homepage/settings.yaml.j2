@@ -2,8 +2,7 @@
 # For configuration options and examples, please see:
 # https://gethomepage.dev/configs/settings/
 
-title:
-  Zen v Kuželovu
+title: Zen v Kuželovu
 
 background:
   image: /images/homepage_bg_2.jpeg
@@ -12,31 +11,59 @@ background:
   brightness: 50 # 0, 50, 75... see https://tailwindcss.com/docs/backdrop-brightness
   opacity: 100 # 0-100
 
-# --- THIS IS THE LAYOUT SECTION ---
+# `cardBlur` is deliberately NOT set — homepage documents it as incompatible
+# with the background blur/saturate/brightness filters above.
+#
+# `language` is also unset: Czech is not among the supported locales
+# (ca, de, en, es, fr, he, hr, hu, it, nb-NO, nl, pt, ru, sv, vi, zh-*), so it
+# would silently fall back to English. The service names are Czech regardless.
+
+# --- PRESENTATION ---
+headerStyle: boxed # underlined (default), boxed, clean, boxedWidgets
+cardStyle: hairline # thin border that brightens on hover, instead of a drop shadow
+blockStyle: refined # heavier widget values, easier to read against the photo background
+# Cards in a row are a mix of plain links and widget-bearing tiles; without this
+# every row is ragged.
+useEqualHeights: true
+# 26 services, nearly all with a siteMonitor or container check. The default
+# style prints "200 OK / 45ms" on each one, which is a wall of text — a dot
+# carries the same information.
+statusStyle: dot
+target: _blank
+hideVersion: true
+
+# --- LAYOUT ---
+# Groups render in the order listed here. Column counts are chosen so each
+# group's services divide into full rows with no orphan tile left on its own —
+# re-check the count when adding a service.
 layout:
-  # Row 1: Cloud & Data (Your personal files)
+  # 5 services
   Náš Cloud a Data:
+    icon: mdi-cloud-lock
     style: row
     columns: 5
 
-  # Row 2: Media (Jellyfin/Seerr)
+  # 3 services
   Náš Zenflix:
+    icon: mdi-movie-open
     style: row
     columns: 3
 
-  # Row 3: Automation & Downloads (The *Arr stack)
-  # We can group these two service blocks together visually if we want,
-  # OR list them separately. Here they are separate rows.
+  # 7 services -> 4 + 3
   Pirátská zátoka:
+    icon: mdi-download-network
     style: row
     columns: 4
 
-  # Row 4: Infrastructure (Network stuff)
-  Infrastruktura:
-    style: row
-    columns: 5
-  
-  # Row 5: Misc (Uptime, Home Assistant, etc)
+  # 3 services
   Různé:
+    icon: mdi-tools
     style: row
-    columns: 2
+    columns: 3
+
+  # 6 services -> 3 + 3. Three of these carry widgets, so three per row reads
+  # better than one cramped six-wide strip. Admin surface, so it sits last.
+  Infrastruktura:
+    icon: mdi-server-network
+    style: row
+    columns: 3

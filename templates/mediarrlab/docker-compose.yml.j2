@@ -36,11 +36,16 @@ services:
 
   # --- 2. The Downloader ---
   qbittorrent:
-    image: lscr.io/linuxserver/qbittorrent:latest
+    # Pinned and excluded from Watchtower. qbit_manage exits every run against
+    # a qBittorrent newer than its supported range, so an unattended :latest
+    # bump (5.3.0, Oct 2026) silently stopped all reclaim for about three weeks.
+    # Bump by hand, only once a qbit_manage *release* supports the new version.
+    image: lscr.io/linuxserver/qbittorrent:5.3.0
     container_name: qbittorrent
     network_mode: "service:gluetun" # TRAFFIC GOES THROUGH VPN
     labels:
       - deunhealth.restart.on.unhealthy=true # Enable deunhealth monitoring
+      - com.centurylinklabs.watchtower.enable=false
     environment:
       - PUID=1000
       - PGID=1000
@@ -224,6 +229,8 @@ services:
       - jellystat-db
   # --- 11. Qbit manage to manage orphaned torrents ---
   qbit_manage:
+    # Left on :latest deliberately. A newer qbit_manage keeps supporting older
+    # qBittorrent releases, so only the qBittorrent side of the pair needs a pin.
     image: ghcr.io/stuffanthings/qbit_manage:latest
     container_name: qbit_manage
     environment:

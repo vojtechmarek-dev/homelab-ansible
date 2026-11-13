@@ -29,8 +29,11 @@
   ansible.builtin.copy:
     dest: "{{ project_path }}/config/crontab.txt"
     mode: '0644'
+    # borgmatic-start is the image's wrapper that forwards SIGTERM to borgmatic, so
+    # `docker stop` mid-backup lets it exit cleanly instead of leaving a stale repo
+    # lock. Bare name on purpose: upstream documents it by name only, not a path.
     content: |
-      0 {{ borgmatic_cron_hour }} * * * /usr/local/bin/borgmatic --verbosity -1 --syslog-verbosity 1
+      0 {{ borgmatic_cron_hour }} * * * borgmatic-start --verbosity -1 --syslog-verbosity 1
   notify: Restart Borgmatic
 
 - name: Deploy Borgmatic docker-compose.yml

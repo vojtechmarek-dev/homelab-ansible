@@ -16,3 +16,6 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
       - /mnt/backup_tank:/mnt/backup_tank
     restart: unless-stopped
+    # SIGTERM reaches borgmatic via borgmatic-start; Docker's default 10s would
+    # still SIGKILL a running backup before it can release the repo lock.
+    stop_grace_period: 10m

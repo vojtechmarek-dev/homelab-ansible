@@ -1,0 +1,15 @@
+---
+# For configuration options and examples, please see:
+# https://gethomepage.dev/configs/docker/
+#
+# Declares the Docker instance that services reference with `server: local`
+# alongside `container: <name>` in services.yaml. Without this file those
+# fields are inert — homepage shows no container status at all.
+#
+# The socket is bind-mounted read-only by the compose file. Reading it directly
+# requires homepage to run as root, which it does (the compose sets no `user:`).
+#
+# Only containers on kuzelovlab are visible here. Services running on medialab
+# use `siteMonitor` instead, since this socket cannot see another host.
+local:
+  socket: /var/run/docker.sock

@@ -4,17 +4,20 @@
         icon: adguard-home
         href: http://adguardhome.{{ domain }}
         description: Vlastní DNS a blokování reklam
+        server: local
         container: adguard-home
         
     - Caddy:
         icon: caddy
-        Description: Reverzní Proxy a SSL Certifikáty
+        description: Reverzní Proxy a SSL Certifikáty
+        server: local
         container: caddy
 
     - Cloudflare Tunnel:
         icon: cloudflare.png
         href: https://one.dash.cloudflare.com/
         description: Tunely pro bezpečný přístup z internetu
+        server: local
         container: cloudflared
         widget:
             type: cloudflared
@@ -25,6 +28,7 @@
         icon: authentik
         href: https://auth.{{ domain }}
         description: Naše centrální správa uživatelů a SSO
+        server: local
         container: authentik-server-1
         fields: ["users", "loginsLast24H", "failedLoginsLast24H"]
         widget:
@@ -32,6 +36,13 @@
             url: http://server:9000
             key: {{ secrets.authentik_api_key }}
             version: 2
+    - Gotify:
+        icon: gotify
+        href: https://notify.{{ domain }}
+        description: Notifikace ze záloh a hlídání místa na disku
+        server: local
+        container: gotify
+
     - Borgmatic Healthcheck:
         icon: healthchecks
         description: Borg backup of Kuzelovlab to remote server
@@ -45,6 +56,7 @@
         icon: immich
         href: https://fotky.{{ domain }}
         description: Zálohování Fotek a Videí (dostupné z internetu)
+        server: local
         container: immich_server
         widget:
             type: immich
@@ -56,6 +68,7 @@
         icon: mealie
         href: https://kucharka.{{ domain }}
         description: Naše Kuchařka (dostupné z internetu)
+        server: local
         container: mealie
         widget:
             type: mealie
@@ -72,6 +85,7 @@
     - Seafile:
         icon: seafile
         href: https://disk.{{ domain }}
+        server: local
         container: seafile
         description: Náš vlastní Disk
 
@@ -79,6 +93,7 @@
         icon: samba-server
         href: smb://192.168.0.20/public
         description: Lokální Sdílení Souborů
+        server: local
         container: samba
 
 - Náš Zenflix:
@@ -90,9 +105,10 @@
         widget:
             type: jellyfin
             url: http://192.168.0.30:8096
-            key: {{ secrets.jellyfin_api_key}}
+            key: {{ secrets.jellyfin_api_key }}
+            version: 2
             fields: ["movies", "series", "episodes"]
-            enableBlocks: true # Shows "Now Playing"widget:
+            enableBlocks: true # required for the movies/series/episodes counts
             enableNowPlaying: true # optional, defaults to true
             enableUser: false # optional, defaults to false
             enableMediaControl: false # optional, defaults to true
@@ -132,6 +148,20 @@
             url: http://192.168.0.45:3001
             slug: servers
 
+    - Stirling PDF:
+        icon: stirling-pdf
+        href: https://pdf.{{ domain }}
+        description: Nástroje pro práci s PDF
+        server: local
+        container: stirling-pdf
+
+    - Obsidian LiveSync:
+        icon: obsidian
+        href: https://obsidian.{{ domain }}
+        description: Synchronizace poznámek (CouchDB)
+        server: local
+        container: obsidian-couchdb
+
 - Pirátská zátoka:
     - Radarr:
         icon: radarr
@@ -143,7 +173,7 @@
             url: http://192.168.0.30:7878
             key: {{ secrets.radarr_api_key }}
             enableQueue: true
-            fielads: ["wanted", "missing", "queued", "movies"]
+            fields: ["wanted", "missing", "queued", "movies"]
 
     - Sonarr:
         icon: sonarr
@@ -177,3 +207,34 @@
             url: http://192.168.0.30:6767
             key: {{ secrets.bazarr_api_key }}
             fields: ["missingEpisodes", "missingMovies"]
+
+    - qBittorrent:
+        icon: qbittorrent
+        href: https://torrents.{{ domain }}
+        description: Stahování (přes VPN)
+        # Port 8080 is published by gluetun, not by the qbittorrent container.
+        siteMonitor: http://192.168.0.30:8080
+        widget:
+            type: qbittorrent
+            url: http://192.168.0.30:8080
+            username: {{ secrets.qbittorrent_user }}
+            password: {{ secrets.qbittorrent_password }}
+            fields: ["leech", "download", "seed", "upload"]
+
+    - Tdarr:
+        icon: tdarr
+        href: https://tdarr.{{ domain }}
+        description: Překódování knihovny do H.265
+        siteMonitor: http://192.168.0.30:8265
+        widget:
+            type: tdarr
+            url: http://192.168.0.30:8265
+            # key omitted: Tdarr runs without auth on the LAN
+            fields: ["queue", "processed", "errored", "saved"]
+
+    - Cleanuparr:
+        icon: cleanuparr
+        href: https://cleanuparr.{{ domain }}
+        description: Čištění zaseknutých a neúplných stahování
+        # No homepage widget exists for Cleanuparr.
+        siteMonitor: http://192.168.0.30:11011

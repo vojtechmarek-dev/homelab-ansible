@@ -269,6 +269,9 @@
     stack_extra_dirs:
       - /srv/homepage/config
     stack_config_files:
+      # Must exist for the `server: local` + `container:` fields in
+      # services.yaml to resolve; without it homepage reports no container state.
+      - { src: homepage/docker.yaml.j2, dest: /srv/homepage/config/docker.yaml, mode: "0600" }
       - { src: homepage/services.yaml.j2, dest: /srv/homepage/config/services.yaml, mode: "0600" }
       - { src: homepage/settings.yaml.j2, dest: /srv/homepage/config/settings.yaml, mode: "0600" }
       - { src: homepage/bookmarks.yaml.j2, dest: /srv/homepage/config/bookmarks.yaml, mode: "0600" }
@@ -382,7 +385,7 @@
     # hardlink. The media copy survives; the torrent does not. That is the
     # intended lifecycle, not a bug — raise this value to seed for longer.
     qbit_default_max_ratio: "-1"
-    qbit_default_max_seeding_time: "14d"
+    qbit_default_max_seeding_time: "3d"
     # The bin lives on /data itself: cleanup MOVES data into it rather than
     # unlinking, so nothing is reclaimed until the bin is emptied. At 1 day
     # that means no space returns for 24h, while a Tdarr run keeps adding new

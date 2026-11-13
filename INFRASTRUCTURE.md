@@ -51,6 +51,27 @@ To optimize performance, we separate databases (high IOPS) from bulk storage (hi
 - **Hot Tier (NVMe SSD):** All databases (Postgres, MariaDB, Redis) and application configs live on NVMe storage. (Migrated from `/srv` to `/srv_fast` via `rsync -avH`.)
 - **Cold Tier (HDD Pool):** Bulk files (Immich libraries, Seafile sync blocks, movies, and torrents) live on the HDD ZFS pool.
 
+**ext4 root reserve.** `provisioning/` formats every volume as ext4 with mkfs defaults, which hides 5% of blocks for root only. That reserve keeps a full *root* filesystem usable (journald, sshd and apt can still write). On a data volume whose writers are mostly non-root containers it is just locked-away space: 116 GiB on medialab's `/data`. Lowering it also removes forced headroom against fragmentation, so on a lowered volume the `disk_alert` floor is the guard instead. Only lower it on a volume that is actually tight; on kuzelovlab the next candidate is `/srv` (37.5 GiB reserved, 30% used as of Nov 2026). Doing this inside the Proxmox VMs is safe because their `tank` zvols are thick-provisioned (`refreservation` ≥ `volsize`), so space a guest frees up is guaranteed by the pool. **Not captured by Ansible:** these were changed by hand, and re-provisioning brings back 5%.
+
+| host | volume | reserve | changed |
+|---|---|---|---|
+| medialab | `/data` | 1% | Nov 2026, `tune2fs -m 1 /dev/mapper/media_vg-data` (+92 GiB) |
+| all others | — | 5% (mkfs default) | — |
+
+```bash
+# Reserve per ext4 mount on a host
+findmnt -rn -t ext4 -o SOURCE,TARGET | while read -r dev mnt; do
+  sudo tune2fs -l "$dev" | awk -F: -v m="$mnt" '/^Block size/ {bs=$2} /^Reserved block count/ {rb=$2}
+    END {printf "%-18s %6.1f GiB reserved\n", m, rb*bs/2^30}'
+done
+```
+
+**TRIM through to ZFS.** When a guest deletes data, ZFS keeps those blocks allocated until it receives a trim, and a guest's weekly `fstrim.timer` trim reaches ZFS only if the VM disk has **Discard** ticked in Proxmox. Without it, QEMU runs the drive with `discard: ignore` and silently drops every trim, so the zvol ends up holding every block ever written. The `tank` disks were created without Discard. medialab's zvol was holding about 325 GiB of deleted data; ticking Discard and running one `fstrim` took `tank` from 70% to 61% (Nov 2026). This does not add usable space, because the zvols are thick. It keeps the pool's real fill low, which is what ZFS performance and resilver time depend on. kuzelovlab's `tank` disk (VM 100 `virtio1`) still needs Discard ticked; it takes effect on the next restart done from Proxmox, not on a reboot inside the guest. **Not captured by Ansible:** this is Proxmox VM config. Check from the Proxmox host; data disks should show `unmap`:
+
+```bash
+qm showcmd <vmid> --pretty | grep -o '"discard":"[a-z]*"' | sort | uniq -c
+```
+
 ### II. Secure Remote Access & CGNAT Bypass
 
 - **Cloudflare Tunnel (`cloudflared`):** Bypasses home CGNAT without opening router ports. Runs outbound on the proxy network, routing securely to `https://caddy:443` (using *No TLS Verify* and explicit `originServerName` / `httpHostHeader` configurations).
@@ -112,6 +133,8 @@ Deletions route through `/data/torrents/.recycle_bin` for a short window before 
 **Cleanuparr** removes downloads the \*arrs refuse to import — notably padded `.exe` malware from public trackers, which otherwise sits in the queue until cleared by hand.
 
 > **Not captured by Ansible:** qBittorrent's own settings — torrent queueing limits, excluded file names, WebUI options — live only in `qBittorrent.conf` on the host. They *are* covered by the config sync, but a from-scratch rebuild needs them set by hand. qbit_manage owns all share limits (`disable_qbt_default_share_limits: true`), so setting those in the qBittorrent UI is pointless: they are overwritten within 30 minutes. Change them in `apps.yml`.
+
+> **qBittorrent is version-pinned and excluded from Watchtower.** qbit_manage exits every run when qBittorrent is newer than its supported range — no deletion, no tagging, no alert. Bump the qBittorrent tag in `templates/mediarrlab/docker-compose.yml.j2` by hand, and only after a qbit_manage *release* supports the new version (the `master` entry in its `SUPPORTED_VERSIONS.json`, not `develop`). qbit_manage itself stays on `:latest`. To confirm it is running: `sudo docker logs --since 1h qbit_manage 2>&1 | grep -i 'only compatible'` must print nothing.
 
 ---
 
