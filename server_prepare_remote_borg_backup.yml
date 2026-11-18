@@ -39,3 +39,13 @@
         state: present
         key: "{{ auth_key }}"
         comment: "root@kuzelovlab-backup"
+        # This key exists to run Borg against one repository and nothing else.
+        # `command=` forces every login into `borg serve` confined to that
+        # repository, whatever the client asked for; `restrict` turns off pty,
+        # forwarding and rc files. The account keeps its shell because sshd
+        # runs the forced command through it.
+        #
+        # Deliberately not --append-only: kuzelovlab's borgmatic prunes and
+        # compacts this repository itself, and append-only would turn both
+        # into no-ops that never free space on the backup disk.
+        key_options: 'command="borg serve --restrict-to-repository {{ target_dir }}",restrict'

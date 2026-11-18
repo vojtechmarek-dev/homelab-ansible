@@ -40,7 +40,9 @@
   ansible.builtin.template:
     src: "{{ borgmatic_docker_compose_template }}"
     dest: "{{ project_path }}/docker-compose.yml"
-    mode: '0644'
+    # No secret in this one, but every compose file on the hosts is root-only
+    # so one rule covers them all.
+    mode: '0600'
   notify: Restart Borgmatic
 
 - name: Ensure Borgmatic container is running

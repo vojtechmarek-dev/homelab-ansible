@@ -1,14 +1,6 @@
 # This is a private Caddyfile for internal services
 
 
-https://home.{{ domain }} {
-    tls {
-        dns cloudflare {env.CLOUDFLARE_API_TOKEN}
-    }
-    # Homepage runs on port 3000 inside its container
-    reverse_proxy homepage:3000
-}
-
 https://pdf.{{ domain }} {
     # Use the Cloudflare DNS plugin to get a certificate
     tls {

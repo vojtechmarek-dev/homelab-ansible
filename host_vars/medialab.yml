@@ -1,2 +1,15 @@
 ---
 host_tailscale_ip: "100.74.161.127"
+
+# Filesystems the disk_alert role watches on this host (role default: only /).
+# /data is the 2.4TB media volume that the Tdarr transcode campaign repeatedly
+# pushed close to full; /mnt/ssd_cache holds Tdarr's transcode scratch and
+# qBittorrent's incomplete downloads.
+disk_alert_paths:
+  - /
+  - /data
+  - /mnt/ssd_cache
+# /data is a 2.4TB volume: 15% free is ~360GB, far more warning than needed.
+# 8% (~190GB) still leaves room for several in-flight transcodes plus the
+# recycle bin before anything breaks.
+disk_alert_free_percent: 8

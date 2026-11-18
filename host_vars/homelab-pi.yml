@@ -1,0 +1,11 @@
+---
+# This host's Tailscale address. server_dockhand_proxy.yml needs it: the socket
+# proxies on the other hosts accept connections from this address only.
+# Fill it in from `sudo docker exec tailscaled tailscale ip -4` on the Pi.
+host_tailscale_ip: "100.82.28.58"
+
+# Site B has no route to kuzelovlab's LAN address — a request to
+# 192.168.0.20:8085 from here times out — so pushes to Gotify go over the
+# tailnet instead. Gotify's published port answers on kuzelovlab's Tailscale
+# address as well.
+gotify_url: "http://{{ hostvars['kuzelovlab'].host_tailscale_ip }}:8085"

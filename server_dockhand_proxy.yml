@@ -1,0 +1,110 @@
+---
+# Dockhand (on homelab-pi, deployed from apps.yml) manages the Docker daemons
+# of the other hosts through a socket proxy on each of them. The proxy uses
+# host networking and listens on 0.0.0.0:2375, and it has to allow writes or
+# Dockhand could not start, stop or update anything — so the control that
+# matters is who can reach that port. The pre-tasks below allow exactly one
+# client: Dockhand's host, over the tailnet.
+#
+# Run: ansible-playbook server_dockhand_proxy.yml --ask-vault-pass -K
+
+- name: Deploy Dockhand socket-proxy
+  hosts: dockhand_servers
+  become: true
+  gather_facts: false
+  vars:
+    stack_name: dockhand-proxy
+    stack_path: /srv/dockhand-proxy
+    stack_compose_template: dockhand/proxy.docker-compose.yml.j2
+    # The one client allowed to use the proxy.
+    dockhand_client_ip: "{{ hostvars['homelab-pi'].host_tailscale_ip }}"
+
+  pre_tasks:
+    # Without the address the source filter below cannot be written, and
+    # failing here is better than a rule that matches nothing.
+    - name: Require the Dockhand host's Tailscale address
+      ansible.builtin.assert:
+        that:
+          - hostvars['homelab-pi'].host_tailscale_ip is defined
+        fail_msg: >-
+          Set host_tailscale_ip in host_vars/homelab-pi.yml
+          (on the Pi: sudo docker exec tailscaled tailscale ip -4).
+
+    - name: Pre-seed iptables-persistent so the install is non-interactive
+      ansible.builtin.debconf:
+        name: iptables-persistent
+        question: "iptables-persistent/{{ item.q }}"
+        value: "{{ item.v }}"
+        vtype: boolean
+      loop:
+        - { q: autosave_v4, v: 'false' }
+        - { q: autosave_v6, v: 'false' }
+
+    - name: Install iptables-persistent (so the rules survive reboot)
+      ansible.builtin.apt:
+        name: iptables-persistent
+        state: present
+        update_cache: true
+
+    - name: Allow TCP 2375 ingress only on the tailscale0 interface
+      ansible.builtin.iptables:
+        chain: INPUT
+        in_interface: tailscale0
+        protocol: tcp
+        destination_port: "2375"
+        jump: ACCEPT
+        action: insert
+        comment: "dockhand socket-proxy: accept from tailnet"
+      notify: persist iptables
+
+    - name: Drop TCP 2375 ingress from any other interface
+      ansible.builtin.iptables:
+        chain: INPUT
+        protocol: tcp
+        destination_port: "2375"
+        jump: DROP
+        action: append
+        comment: "dockhand socket-proxy: deny non-tailnet"
+      notify: persist iptables
+
+    # The two INPUT rules above keep the LAN out; the per-peer filter lives in
+    # PREROUTING of the raw table, which runs before any filter-table chain.
+    # tailscaled (in its container) writes its ts-input chain — which accepts
+    # everything arriving on tailscale0 — into the *legacy* iptables tables,
+    # while these rules go to the nft backend. A packet has to pass both rule
+    # sets, so today an INPUT rule would work too. If tailscaled ever picks
+    # the nft backend, ts-input moves to the top of this same INPUT chain and
+    # an INPUT rule would never see tailnet traffic; raw is safe either way.
+    - name: Drop TCP 2375 on tailscale0 from every peer except the Dockhand host
+      ansible.builtin.iptables:
+        table: raw
+        chain: PREROUTING
+        in_interface: tailscale0
+        source: "!{{ dockhand_client_ip }}"
+        protocol: tcp
+        destination_port: "2375"
+        jump: DROP
+        comment: "dockhand socket-proxy: only the Dockhand host"
+      notify: persist iptables
+
+    # Everything above is IPv4. The proxy can listen on IPv6 as well, where
+    # none of those rules apply. Dockhand connects over IPv4, so IPv6 to this
+    # port is closed outright.
+    - name: Drop TCP 2375 over IPv6 from anywhere but loopback
+      ansible.builtin.iptables:
+        ip_version: ipv6
+        table: raw
+        chain: PREROUTING
+        in_interface: "!lo"
+        protocol: tcp
+        destination_port: "2375"
+        jump: DROP
+        comment: "dockhand socket-proxy: no IPv6"
+      notify: persist iptables
+
+  roles:
+    - docker_stack
+
+  handlers:
+    - name: persist iptables
+      ansible.builtin.command: netfilter-persistent save

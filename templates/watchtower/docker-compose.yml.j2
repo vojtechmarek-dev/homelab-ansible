@@ -1,6 +1,10 @@
 services:
   watchtower:
-    image: containrrr/watchtower:latest
+    # The maintained continuation of containrrr/watchtower, which was archived
+    # upstream after its last release in Nov 2023. Same binary and the same
+    # com.centurylinklabs.watchtower.* labels, so the opt-outs on Caddy and
+    # qBittorrent keep working.
+    image: nickfedor/watchtower:latest
     container_name: watchtower
     volumes:
       # Critical: Needs access to the Docker socket to control other containers
@@ -8,8 +12,29 @@ services:
     environment:
       - TZ=Europe/Prague
       - WATCHTOWER_CLEANUP=true # Delete old images after update
-      - WATCHTOWER_SCHEDULE=0 0 2 * * * # Run at 02:00 every day (Cron syntax)
-      - DOCKER_API_VERSION=1.45
+      # 03:00 daily (6-field cron). Chosen to stay clear of the jobs that read a
+      # database through a running container — Immich's own dump at 02:00,
+      # medialab's config sync at 02:30, borgmatic at 04:00 and 05:00 — since a
+      # container restarted mid-dump leaves a truncated dump behind.
+      - WATCHTOWER_SCHEDULE=0 0 3 * * *
+      # No DOCKER_API_VERSION: this image negotiates the API version itself. The
+      # containrrr image needed it pinned, and a pin is what breaks the next
+      # time Docker raises its minimum.
+{% if secrets.gotify_app_token | default('') %}
+      # Report to Gotify whenever a session updates a container or fails to, so
+      # there is a record of what changed overnight. REPORT keeps quiet nights
+      # silent. The start-up message is left on: it confirms after each deploy
+      # that this host can actually reach Gotify. Skipped when the vault has no
+      # token, like the other Gotify integrations.
+      #
+      # shoutrrr URL form, gotify://host[:port]/token — the per-service
+      # WATCHTOWER_NOTIFICATION_GOTIFY_* variables are deprecated. disabletls
+      # because Gotify is reached over plain HTTP on the LAN or the tailnet.
+      - WATCHTOWER_NOTIFICATION_URL=gotify://{{ gotify_url | regex_replace('^https?://', '') }}/{{ secrets.gotify_app_token }}{{ '?disabletls=yes' if gotify_url.startswith('http://') else '' }}
+      - WATCHTOWER_NOTIFICATION_REPORT=true
+      # Otherwise messages are titled with the container ID.
+      - WATCHTOWER_NOTIFICATIONS_HOSTNAME={{ inventory_hostname }}
+{% endif %}
       # - WATCHTOWER_INCLUDE_STOPPED=true # Uncomment if you want to update stopped containers too
     restart: unless-stopped
     networks:

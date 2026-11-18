@@ -1,7 +1,10 @@
 # --- SOURCE & DESTINATION ---
 source_directories:
     - /srv
-    - /etc
+    # The host's /etc, bind-mounted read-only by the compose file. A plain
+    # `/etc` here would be the container's own, so archives store the host's
+    # under host/etc.
+    - /host/etc
 
 repositories:
     - path: {{ local_backup_repo_path }}
@@ -17,6 +20,19 @@ encryption_passphrase: "{{ secrets.borgbackup_password }}"
 compression: auto,zstd
 checkpoint_interval: 600
 
+# --- ARCHIVE NAMING ---
+# Named after the Ansible host rather than borgmatic's default `{hostname}`.
+# Inside the container that is the container ID, which changes every time
+# compose recreates the container (any change to this role does that).
+archive_name_format: '{{ inventory_hostname }}-{now:%Y-%m-%dT%H:%M:%S.%f}'
+# Apply retention and checks to every archive in the repository, whatever its
+# name. Left unset, borgmatic derives the pattern from archive_name_format, so
+# archives written under an earlier name (the container-ID prefix used until
+# Nov 2026) would never be pruned. Correct only while this repository has a
+# single writer: roles/borgbackup targets the same path, and scheduling its
+# script again would put its archives under this retention policy too.
+match_archives: 'sh:*'
+
 # --- RETENTION POLICY ---
 keep_daily: 7
 keep_weekly: 4
@@ -31,7 +47,8 @@ commands:
           - create
       run:
           - echo "Starting Journiv DB Dump..."
-          - sh -c "docker exec -t journiv-postgres-db pg_dumpall -c -U journiv > /srv/database_dumps/journiv.sql"
+          # No -t: a pseudo-TTY turns every newline in the dump into CRLF.
+          - sh -c "docker exec journiv-postgres-db pg_dumpall -c -U journiv > /srv/database_dumps/journiv.sql"
     - after: error
       when:
           - create

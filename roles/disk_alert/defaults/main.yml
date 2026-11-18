@@ -7,7 +7,9 @@
 # in the vault as `gotify_app_token`. Without it the script exits silently, so
 # the role is safe to run before the secret exists.
 
-# Filesystems to watch. Use mount points, not devices.
+# Filesystems to watch. Use mount points, not devices. This default covers only
+# the root filesystem; hosts with separate data volumes list theirs in
+# host_vars/<host>.yml.
 disk_alert_paths:
   - /
 
@@ -17,8 +19,10 @@ disk_alert_free_percent: 15
 # How often cron runs the check.
 disk_alert_interval_minutes: 15
 
-# Gotify lives on kuzelovlab, published on 8085.
-disk_alert_gotify_url: "http://192.168.0.20:8085"
+# Gotify lives on kuzelovlab, published on 8085. Which address reaches it
+# depends on the site, so the URL comes from the inventory-wide `gotify_url`
+# (inventory.yml, overridden per host in host_vars).
+disk_alert_gotify_url: "{{ gotify_url }}"
 disk_alert_gotify_token: "{{ secrets.gotify_app_token | default('') }}"
 
 # Gotify priority: 8 raises a notification on most clients.

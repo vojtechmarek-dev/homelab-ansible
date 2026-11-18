@@ -90,7 +90,7 @@ qm showcmd <vmid> --pretty | grep -o '"discard":"[a-z]*"' | sort | uniq -c
 ### IV. Automated 3-2-1 Backups (Borgmatic + config sync)
 
 - **Borgmatic (Docker-based on Kuzelovlab):**
-  - Runs on a schedule at **03:00 AM**.
+  - Runs on a schedule at **04:00 AM**.
   - Triggers native database dumps (`mariadb-dump`, `pg_dumpall`) into `/srv/database_dumps` right before backup.
   - CouchDB (Obsidian LiveSync, `/srv_fast/obsidian-livesync`) has no dump hook on purpose: its `.couch` files are append-only, so a live file copy is consistent. Every synced device also holds a full copy of the vault.
   - Compresses, encrypts, and deduplicates the entirety of `/srv` and `/srv_fast`.
@@ -99,7 +99,9 @@ qm showcmd <vmid> --pretty | grep -o '"discard":"[a-z]*"' | sort | uniq -c
 - **Borgmatic (Docker-based on Lenovo):**
   - Runs locally at **05:00 AM**.
   - Performs database dumps for Journiv.
-  - Backs up `/srv` to `/mnt/backup_tank/local_lenovo` (the internal SATA SSD).
+  - Backs up `/srv` and the host's `/etc` to `/mnt/backup_tank/local_lenovo` (the internal SATA SSD).
+- **Archive names and retention (both hosts):** archives are named `<host>-<timestamp>`, and the 7/4/6 retention applies to every archive in a repository whatever its name. This relies on each repository having a single writer.
+- **Nightly timetable:** Immich's own database dump 02:00 → MediaLab config sync 02:30 → Watchtower 03:00 → Borgmatic 04:00 (Kuzelovlab) and 05:00 (Lenovo). Watchtower restarts containers, so it is kept out of the windows in which a database is being dumped. It reports to Gotify whenever a session updates a container or fails to.
 - **Config sync (MediaLab):**
   - Runs at **02:30 AM**, ahead of Kuzelovlab's Borg run so the night's config is already in place.
   - `rsync` of `/srv/medialab/config` (~1.4GB) to `kuzelovlab:/srv/medialab-backup`, which sits inside Kuzelovlab's Borg source — so it inherits encryption, deduplication, off-site shipping and 7/4/6 retention without a second repository.

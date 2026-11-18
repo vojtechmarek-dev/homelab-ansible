@@ -8,6 +8,9 @@ services:
     volumes:
       # 1. Mount the data you want to back up
       - /srv:/srv
+      # The host's /etc cannot be mounted over the container's own, so it
+      # appears at /host/etc, which is the path the borgmatic config lists.
+      - /etc:/host/etc:ro
       # 2. Mount the config, ssh keys, and cache
       - /srv/borgmatic/config:/etc/borgmatic.d
       - /srv/borgmatic/ssh:/root/.ssh

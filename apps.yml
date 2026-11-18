@@ -34,13 +34,27 @@
   hosts: kuzelovlab
   become: true
   gather_facts: false
+  tags: authentik
   vars:
     stack_name: authentik
     stack_path: /srv/authentik
     stack_compose_template: authentik/docker-compose.yml.j2
+    # Upstream forbids skipping major releases (2026.8+ refuses to migrate
+    # across a skip). To catch up from an older version, step through the
+    # latest patch of each series with `-e authentik_version=<x>`, waiting for
+    # the server to report healthy between steps:
+    #   2025.10.4 -> 2025.12.6 -> 2026.2.7 -> 2026.5.8 -> 2026.8.5
+    # Downgrade is unsupported; take a pg_dump before every step.
+    authentik_version: "2026.8.5"
+    # Not 'always': the role's handler would force-recreate the stack seconds
+    # after the new image started, killing the worker mid-migration.
+    stack_recreate: auto
     stack_extra_dirs:
       - /srv/authentik/config
-      - /srv/authentik/config/media
+      # 2025.12 moved file storage from /media to /data (media now lives in
+      # data/media). Pre-2025.12 hosts must move config/media into
+      # config/data/media by hand, with the stack stopped.
+      - /srv/authentik/config/data
       - /srv/authentik/config/certs
       - /srv/authentik/config/custom-templates
       - /srv_fast/authentik/database
@@ -67,12 +81,12 @@
   hosts: kuzelovlab
   become: true
   gather_facts: false
+  tags: immich
   vars:
     stack_name: immich
     stack_path: /srv/immich
     stack_compose_template: immich/immich.docker-compose.yml.j2
     stack_env_template: immich/immich.env.j2
-    stack_env_mode: "0644"
     stack_extra_dirs:
       - /srv_fast/immich/postgres
       - /srv/immich/library
@@ -90,7 +104,6 @@
     stack_path: /srv/journiv
     stack_compose_template: journiv/journiv.docker-compose.yml.j2
     stack_env_template: journiv/journiv.env.j2
-    stack_env_mode: "0644"
     stack_dir_owner: "1000"
     stack_dir_group: "1000"
     stack_extra_dirs:
@@ -229,31 +242,35 @@
   roles:
     - docker_stack
 
+# Docker management UI. It drives the Pi's own daemon through the local socket
+# and the other hosts through the socket proxy that server_dockhand_proxy.yml
+# puts on each of them, which accepts connections from this host only.
+- name: Deploy Dockhand
+  hosts: homelab-pi
+  become: true
+  gather_facts: false
+  tags: dockhand
+  vars:
+    stack_name: dockhand
+    stack_path: /srv/dockhand
+    stack_compose_template: dockhand/docker-compose.yml.j2
+    stack_pull: always
+    stack_extra_dirs:
+      - /srv/dockhand/data
+  roles:
+    - docker_stack
+
 - name: Deploy Watchtower
   hosts: tailscale_servers
   become: true
   gather_facts: false
+  # Tagged so a change to the updater can go out on its own, without also
+  # applying whatever else in this file is waiting to be deployed.
+  tags: watchtower
   vars:
     stack_name: watchtower
     stack_path: /srv/watchtower
     stack_compose_template: watchtower/docker-compose.yml.j2
-  roles:
-    - docker_stack
-
-- name: Deploy Homepage Dashboard (vojtechmarek.dev)
-  hosts: homelab-thinkcentre
-  become: true
-  gather_facts: false
-  vars:
-    stack_name: homepage
-    stack_path: /srv/homepage
-    stack_compose_template: gethomepage/homepage.docker-compose.yml.j2
-    stack_recreate: auto
-    stack_extra_dirs:
-      - /srv/homepage/config
-    app_name: homepage
-    app_config_path: /srv/homepage/config
-    homepage_hostname: home.vojtechmarek.dev
   roles:
     - docker_stack
 

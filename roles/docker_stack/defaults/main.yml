@@ -15,6 +15,9 @@
 #   stack_recreate          restart-handler recreate policy: auto | always | never (default: always)
 #   stack_dir_owner/group   owner/group for stack_path + stack_extra_dirs (default: root)
 #   stack_dir_mode          mode for stack_path + stack_extra_dirs (default: 0755)
+#   stack_compose_mode      mode of the rendered docker-compose.yml (default: 0600)
+#   stack_env_mode          mode of the rendered .env (default: 0600)
+#   stack_config_mode       default mode for stack_config_files (default: 0644)
 
 stack_extra_dirs: []
 stack_dirs: []
@@ -22,6 +25,12 @@ stack_config_files: []
 stack_pull: missing
 stack_recreate: always
 stack_dir_mode: "0755"
-stack_compose_mode: "0644"
-stack_env_mode: "0640"
+# Root-only: most compose templates carry secrets inline, and the only reader
+# is `docker compose`, which Ansible runs as root. Nothing inside a container
+# reads either file — env_file is resolved by compose, not by the container.
+stack_compose_mode: "0600"
+stack_env_mode: "0600"
+# Config files stay world-readable by default because they are bind-mounted
+# into containers that often run as a non-root user. Give a file that holds a
+# secret its own `mode` in stack_config_files.
 stack_config_mode: "0644"

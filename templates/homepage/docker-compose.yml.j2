@@ -5,14 +5,38 @@ services:
     volumes:
       - {{ config_path }}:/app/config
       - {{ images_path }}:/app/public/images
-      - /var/run/docker.sock:/var/run/docker.sock:ro # To see Docker stats
     environment:
       # This is the required security setting
       HOMEPAGE_ALLOWED_HOSTS: zen132.cz
     restart: unless-stopped
+    depends_on:
+      - dockerproxy
     networks:
       - proxy
+      - docker_api
+
+  # Homepage only reads container state, for the status dots on the dashboard.
+  # Mounting the Docker socket into it would hand over the whole API: a `:ro`
+  # flag on a socket mount does not limit which calls go through it. This proxy
+  # passes just GET requests under /containers; every other endpoint and every
+  # write method stays at the image's default of denied.
+  dockerproxy:
+    image: tecnativa/docker-socket-proxy
+    container_name: homepage-dockerproxy
+    environment:
+      - CONTAINERS=1
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    restart: unless-stopped
+    # No published port, and not on `proxy`: a container listing includes each
+    # container's environment, so nothing but homepage should reach this.
+    networks:
+      - docker_api
 
 networks:
   proxy:
     external: true
+  # Private to the two services above. `internal` also keeps the proxy itself
+  # off the internet.
+  docker_api:
+    internal: true

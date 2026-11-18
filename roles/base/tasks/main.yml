@@ -75,6 +75,30 @@
     state: present
   tags: ['packages']
 
+# Updates from the distribution's own stable and security archives install
+# themselves daily, so a host is not left unpatched until someone next runs the
+# 'update' task above. The package's default origins leave third-party
+# repositories alone, which is deliberate: a Docker engine upgrade restarts
+# every container and should stay a decision. Nothing reboots on its own
+# either — a kernel fix waits for the next reboot, flagged by
+# /var/run/reboot-required.
+- name: Install unattended-upgrades
+  ansible.builtin.apt:
+    name: unattended-upgrades
+    state: present
+  tags: ['unattended']
+
+- name: Enable the daily unattended-upgrades run
+  ansible.builtin.copy:
+    dest: /etc/apt/apt.conf.d/20auto-upgrades
+    owner: root
+    group: root
+    mode: '0644'
+    content: |
+      APT::Periodic::Update-Package-Lists "1";
+      APT::Periodic::Unattended-Upgrade "1";
+  tags: ['unattended']
+
 - name: Enable IPv4 forwarding (Required for Tailscale Subnet Routing)
   ansible.posix.sysctl:
     name: net.ipv4.ip_forward

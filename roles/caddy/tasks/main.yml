@@ -34,7 +34,9 @@
   ansible.builtin.template:
     src: docker-compose.yml.j2
     dest: "{{ caddy_project_path }}/docker-compose.yml"
-    mode: '0644'
+    # Root-only: the file carries the Cloudflare API token. The Caddyfile above
+    # holds no secret and is read from inside the container, so it stays 0644.
+    mode: '0600'
   notify: Restart Caddy
 
 - name: Ensure the Caddy service is running

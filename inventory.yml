@@ -5,6 +5,13 @@ all:
     ansible_user: ansible-manager
     ansible_ssh_private_key_file: ~/.ssh/ansible_manager_homelab_rsa
 
+    # How a host reaches Gotify, which runs on kuzelovlab and is published on
+    # 8085. The LAN address works for everything at site A. Site B hosts have
+    # no route to it and override this in host_vars with kuzelovlab's
+    # Tailscale address. Used by disk_alert, the medialab config sync and
+    # Watchtower's update report.
+    gotify_url: "http://192.168.0.20:8085"
+
   children:
     # --- Infrastructure Groups ---
     proxmox_vms:
@@ -67,10 +74,6 @@ all:
       hosts:
         kuzelovlab:
         medialab:
-        homelab-thinkcentre:
-
-    homepage_servers:
-      hosts:
         homelab-thinkcentre:
 
     immich_servers:

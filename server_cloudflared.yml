@@ -12,7 +12,12 @@
         name: cloudflared
         image: cloudflare/cloudflared:latest
         restart_policy: unless-stopped
-        # Connects using the token
-        command: "tunnel --no-autoupdate run --token {{ cloudflared_token }}"
+        # The token goes in as TUNNEL_TOKEN, which cloudflared reads itself,
+        # rather than as `--token` on the command line: a command line shows up
+        # in the process list for every local user, an environment variable
+        # only for root and the Docker API.
+        command: "tunnel --no-autoupdate run"
+        env:
+          TUNNEL_TOKEN: "{{ cloudflared_token }}"
         networks:
           - name: proxy # MUST be on the same network as Caddy

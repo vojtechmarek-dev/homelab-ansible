@@ -99,7 +99,7 @@
     config_sync_ssh_key: /root/.ssh/id_medialab_sync
     config_sync_dump_dir: /srv/medialab/db_dumps
     config_sync_script_path: /usr/local/bin/medialab-config-sync.sh
-    config_sync_gotify_url: "http://192.168.0.20:8085"
+    config_sync_gotify_url: "{{ gotify_url }}"
     # Regenerable or non-consistent data.
     #
     # Jellyfin's metadata lives under data/metadata in the linuxserver image,

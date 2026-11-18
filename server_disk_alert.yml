@@ -5,32 +5,16 @@
 #
 # Needs a Gotify application token in the vault as `gotify_app_token`. Until
 # that exists the deployed script exits silently, so this is safe to run early.
+#
+# What each host watches (disk_alert_paths), its threshold
+# (disk_alert_free_percent) and how it reaches Gotify (gotify_url) are per-host
+# settings in host_vars/<host>.yml. They are deliberately not set here: play
+# vars outrank host_vars and would flatten every host to the same list. A host
+# with no entry falls back to the role default and watches only /.
 
 - name: Deploy disk space alerting
   hosts: docker_nodes
   become: true
   gather_facts: false
-  vars:
-    disk_alert_paths:
-      - /
-  roles:
-    - disk_alert
-
-# medialab additionally watches /data, the 2.4TB media volume that the Tdarr
-# transcode campaign repeatedly pushed close to full, and /mnt/ssd_cache, which
-# holds Tdarr's transcode scratch and qBittorrent's incomplete downloads.
-- name: Deploy disk space alerting (medialab volumes)
-  hosts: medialab
-  become: true
-  gather_facts: false
-  vars:
-    disk_alert_paths:
-      - /
-      - /data
-      - /mnt/ssd_cache
-    # /data is a 2.4TB volume: 15% free is ~360GB, far more warning than needed.
-    # 8% (~190GB) still leaves room for several in-flight transcodes plus the
-    # recycle bin before anything breaks.
-    disk_alert_free_percent: 8
   roles:
     - disk_alert

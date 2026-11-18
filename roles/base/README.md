@@ -12,4 +12,5 @@ no variables
 - Removes unneeded Ubuntu packages
 - Upgrades the system
 - Install useful tools and programs - installs or updates packages for effective server configuration, monitoring and diagnosis, such as htop, atop, screen, etc.
+- Enables unattended-upgrades (tag `unattended`) - the distribution's own stable and security updates install daily; third-party repositories such as Docker's are left alone and nothing reboots automatically.
 

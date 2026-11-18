@@ -5,3 +5,13 @@ host_tailscale_ip: "100.124.191.123"
 # Other tailscale_servers hosts leave home_lan_subnet empty (role default)
 # so they join the tailnet without advertising any route.
 home_lan_subnet: "{{ secrets.tailscale_home_lan_subnet }}"
+
+# Filesystems the disk_alert role watches on this host (role default: only /).
+# These are separate volumes, so watching / says nothing about them: /srv holds
+# the Immich library and every app's config, /srv_fast the databases, and
+# /mnt/samba_share the Samba share plus Seafile's block store.
+disk_alert_paths:
+  - /
+  - /srv
+  - /srv_fast
+  - /mnt/samba_share

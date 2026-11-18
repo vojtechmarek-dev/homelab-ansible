@@ -164,13 +164,17 @@ These playbooks deploy and manage specific services using Docker. They leverage 
 
 2. `server_tailscale.yml`: Configures the server as a Tailscale subnet router. It sets the required kernel parameters and generates a docker-compose.yml with the correct subnet configuration.
 
+3. `server_dockhand_proxy.yml`: Puts a Docker socket proxy on `kuzelovlab`, `medialab` and `homelab-thinkcentre` so that Dockhand (the `Deploy Dockhand` play in `apps.yml`, running on `homelab-pi`) can manage their containers. Firewall rules limit the proxy's port to the Pi's Tailscale address, which is why `host_vars/homelab-pi.yml` must define `host_tailscale_ip`.
+
 
 ### Maintenance & Monitoring Playbooks
 
-- `server_disk_alert.yml`: Deploys `roles/disk_alert` to every `docker_nodes` host — a cron'd script that pushes to Gotify when a filesystem falls below a free-space threshold, and again when it recovers. `medialab` additionally watches `/data` and `/mnt/ssd_cache` at an 8% floor, the volumes a Tdarr transcode run can fill quickly.
+- `server_disk_alert.yml`: Deploys `roles/disk_alert` to every `docker_nodes` host — a cron'd script that pushes to Gotify when a filesystem falls below a free-space threshold, and again when it recovers. What a host watches and at what threshold is set per host in `host_vars/<host>.yml` (`disk_alert_paths`, `disk_alert_free_percent`); a host with no entry watches only `/`. `kuzelovlab` watches `/srv`, `/srv_fast` and `/mnt/samba_share`, `homelab-thinkcentre` watches `/mnt/backup_tank`, and `medialab` watches `/data` and `/mnt/ssd_cache` at an 8% floor, the volumes a Tdarr transcode run can fill quickly.
 - `server_medialab_config_sync.yml`: Nightly `rsync` of medialab's application config to `kuzelovlab:/srv/medialab-backup`, where kuzelovlab's Borgmatic picks it up. Generates and authorises its own SSH key, dumps the JellyStat database first, and notifies via Gotify on failure. See **Backup Topology** for why medialab has no Borg repo of its own.
 
-Both read the Gotify application token from the vault as `secrets.gotify_app_token`, and degrade silently (no pushes, no errors) if it is absent — so they are safe to deploy before the secret exists.
+Both read the Gotify application token from the vault as `secrets.gotify_app_token`, and degrade silently (no pushes, no errors) if it is absent — so they are safe to deploy before the secret exists. Watchtower (the `Deploy Watchtower` play in `apps.yml`) uses the same token to report every nightly session that updated a container or failed to.
+
+Gotify runs on `kuzelovlab`. The address a host uses for it is the inventory variable `gotify_url`: the LAN address by default (`inventory.yml`), overridden in `host_vars` for the site B hosts, which have no route to that LAN and go through kuzelovlab's Tailscale address instead.
 
 
 ### Running playbooks with secrets
@@ -285,15 +289,17 @@ use the same passphrase, stored in the vault as `secrets.borgbackup_password`.
 | Writer | Driver | Schedule | Sources | Destination |
 |---|---|---|---|---|
 | `kuzelovlab` | Borgmatic (Docker, `b3vis/borgmatic`) — `server_borgmatic.yml` | daily 04:00 | `/srv`, `/srv_fast`, `/mnt/samba_share` + pre-backup DB dumps (Authentik, Mealie, Seafile) to `/srv/database_dumps` | `ssh://borg@<thinkcentre TS IP>/mnt/backup_tank/kuzelovlab` (pushed over Tailscale) |
-| `homelab-thinkcentre` (a) | Borgmatic (Docker) — `server_borgmatic.yml` | daily 05:00 | `/srv`, `/etc` + pre-backup DB dump (Journiv) to `/srv/database_dumps` | local `/mnt/backup_tank/local_borg_repo` |
+| `homelab-thinkcentre` (a) | Borgmatic (Docker) — `server_borgmatic.yml` | daily 05:00 | `/srv`, the host's `/etc` (mounted into the container at `/host/etc`, so stored as `host/etc`) + pre-backup DB dump (Journiv) to `/srv/database_dumps` | local `/mnt/backup_tank/local_borg_repo` |
 | `homelab-thinkcentre` (b) | System `borg` + cron + bash script — `server_borgbackup.yml` (`roles/borgbackup`) | daily 02:30 | `/srv` | same local repo `/mnt/backup_tank/local_borg_repo` |
 | `medialab` | `rsync` over SSH + cron — `server_medialab_config_sync.yml` | daily 02:30 | `/srv/medialab/config` + JellyStat dump to `/srv/medialab/db_dumps` | `kuzelovlab:/srv/medialab-backup`, which sits inside kuzelovlab's Borg source and therefore reaches the remote repo on the 04:00 run |
 
 Notes:
 
-- `homelab-thinkcentre` is also the **receiver** for `kuzelovlab`'s remote pushes — that side is configured by `server_prepare_remote_borg_backup.yml` (creates `borg` user + authorized key + target dir).
+- `homelab-thinkcentre` is also the **receiver** for `kuzelovlab`'s remote pushes — that side is configured by `server_prepare_remote_borg_backup.yml` (creates `borg` user + authorized key + target dir). The key is limited to `borg serve` on that one repository, with no shell, pty or forwarding; it is not append-only, because kuzelovlab prunes and compacts the repository itself.
 - Both layers on `homelab-thinkcentre` write to the same repo path; pick whichever archive name is freshest at restore time.
-- Retention on both Borgmatic configs: `7 daily / 4 weekly / 6 monthly`.
+- Retention on both Borgmatic configs: `7 daily / 4 weekly / 6 monthly`, applied to every archive in the repository whatever its name (`match_archives: 'sh:*'`).
+- Borgmatic archives are named `<inventory hostname>-<timestamp>`. Archives made before Nov 2026 start with a container ID instead; they age out under the same retention.
+- On `homelab-thinkcentre`, archives made before Nov 2026 hold the borgmatic container's own `/etc` under `etc/`, not the host's.
 - Healthchecks.io pings on success: `secrets.kuzelovlab_borg_healtcheck_url` (kuzelovlab) and `secrets.healthcheck_borg_url` (homelab-thinkcentre + the system script).
 - **`medialab` has no Borg repository of its own, by design.** Its primary data (`/data` — ~2 TB of media and torrents) is re-downloadable and deliberately unprotected; the only irreplaceable state is ~1.4 GB of application config. A second repo, container, key exchange and monitoring surface was not worth that, so medialab piggybacks on kuzelovlab's existing backup and inherits its encryption, deduplication, off-site shipping and retention. The SSH key exchange is automated inside the playbook (generated on medialab, authorised on kuzelovlab as the unprivileged `mediasync` user) — there is no key to paste into the vault.
 - The medialab sync runs at 02:30, ahead of kuzelovlab's 04:00 Borg run, so each night's config is in place before Borg reads it.
@@ -380,12 +386,14 @@ sudo mount /dev/<vg>/<lv> /mnt/backup_tank
 # add it to /etc/fstab so it persists across reboots
 exit
 
-# 5. Restore /srv + /etc from the LOCAL Borg repo
+# 5. Restore /srv from the LOCAL Borg repo. The old host's /etc comes back as
+#    /host/etc, next to the fresh install's /etc rather than over it: copy
+#    across what you need by hand (fstab entries, modprobe quirks, sshd config).
 ssh ansible-manager@homelab-thinkcentre
 export BORG_PASSPHRASE='<secrets.borgbackup_password>'
 sudo -E borg list /mnt/backup_tank/local_borg_repo
 cd /
-sudo -E borg extract --verbose --list /mnt/backup_tank/local_borg_repo::<archive>   # restores srv, etc
+sudo -E borg extract --verbose --list /mnt/backup_tank/local_borg_repo::<archive>   # restores srv, host/etc
 exit
 
 # 6. Networking (this host runs Tailscale BARE-METAL, not via the docker role)

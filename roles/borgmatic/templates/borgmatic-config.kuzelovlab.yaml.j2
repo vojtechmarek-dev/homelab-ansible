@@ -23,6 +23,18 @@ ssh_command: ssh -o StrictHostKeyChecking=accept-new
 
 checkpoint_interval: 600
 
+# --- ARCHIVE NAMING ---
+# Named after the Ansible host rather than borgmatic's default `{hostname}`.
+# Inside the container that is the container ID, which changes every time
+# compose recreates the container (any change to this role does that).
+archive_name_format: '{{ inventory_hostname }}-{now:%Y-%m-%dT%H:%M:%S.%f}'
+# Apply retention and checks to every archive in the repository, whatever its
+# name. Left unset, borgmatic derives the pattern from archive_name_format, so
+# archives written under an earlier name (the container-ID prefix used until
+# Nov 2026) would never be pruned. Correct only while this repository has a
+# single writer.
+match_archives: 'sh:*'
+
 # --- RETENTION POLICY ---
 keep_daily: 7
 keep_weekly: 4
